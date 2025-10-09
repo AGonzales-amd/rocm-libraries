@@ -22,9 +22,17 @@
  * ************************************************************************ */
 #pragma once
 
+#ifndef CBLAS_API64
+#define CBLAS_API64
+#endif // CBLAS_API64
+
 #include "cblas.h"
 #include "hipblas.h"
 #include "type_utils.h"
+
+#ifndef API_SUFFIX
+#define API_SUFFIX(a) a
+#endif // API_SUFFIX
 
 /*!\file
  * \brief provide template functions interfaces to CBLAS C89 interfaces, it is only used for testing
@@ -77,19 +85,19 @@ void ref_asum(int64_t n, const T* x, int64_t incx, real_t<T>* result);
 template <>
 inline void ref_asum(int64_t n, const double* x, int64_t incx, double* result)
 {
-    *result = cblas_dasum(n, x, incx);
+    *result = API_SUFFIX(cblas_dasum)(n, x, incx);
 }
 
 template <>
 inline void ref_asum(int64_t n, const std::complex<float>* x, int64_t incx, float* result)
 {
-    *result = cblas_scasum(n, x, incx);
+    *result = API_SUFFIX(cblas_scasum)(n, x, incx);
 }
 
 template <>
 inline void ref_asum(int64_t n, const std::complex<double>* x, int64_t incx, double* result)
 {
-    *result = cblas_dzasum(n, x, incx);
+    *result = API_SUFFIX(cblas_dzasum)(n, x, incx);
 }
 
 // rotm
@@ -99,14 +107,14 @@ void ref_rotm(int64_t n, T1* x, int64_t incx, T1* y, int64_t incy, T1* param);
 template <>
 inline void ref_rotm<float>(int64_t n, float* x, int64_t incx, float* y, int64_t incy, float* param)
 {
-    cblas_srotm(n, x, incx, y, incy, param);
+    API_SUFFIX(cblas_srotm)(n, x, incx, y, incy, param);
 }
 
 template <>
 inline void
     ref_rotm<double>(int64_t n, double* x, int64_t incx, double* y, int64_t incy, double* param)
 {
-    cblas_drotm(n, x, incx, y, incy, param);
+    API_SUFFIX(cblas_drotm)(n, x, incx, y, incy, param);
 }
 
 // rotmg
@@ -116,13 +124,13 @@ void ref_rotmg(T1* d1, T1* d2, T1* x1, T1* y1, T1* param);
 template <>
 inline void ref_rotmg<float>(float* d1, float* d2, float* x1, float* y1, float* param)
 {
-    cblas_srotmg(d1, d2, x1, *y1, param);
+    API_SUFFIX(cblas_srotmg)(d1, d2, x1, *y1, param);
 }
 
 template <>
 inline void ref_rotmg<double>(double* d1, double* d2, double* x1, double* y1, double* param)
 {
-    cblas_drotmg(d1, d2, x1, *y1, param);
+    API_SUFFIX(cblas_drotmg)(d1, d2, x1, *y1, param);
 }
 
 /*
@@ -678,7 +686,7 @@ inline void ref_trsm<float>(hipblasSideMode_t  side,
                             int64_t            ldb)
 {
     // just directly cast, since transA, transB are integers in the enum
-    cblas_strsm(CblasColMajor,
+    API_SUFFIX(cblas_strsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -706,7 +714,7 @@ inline void ref_trsm<double>(hipblasSideMode_t  side,
                              int64_t            ldb)
 {
     // just directly cast, since transA, transB are integers in the enum
-    cblas_dtrsm(CblasColMajor,
+    API_SUFFIX(cblas_dtrsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -733,7 +741,7 @@ inline void ref_trsm<std::complex<float>>(hipblasSideMode_t          side,
                                           std::complex<float>*       B,
                                           int64_t                    ldb)
 {
-    cblas_ctrsm(CblasColMajor,
+    API_SUFFIX(cblas_ctrsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -760,7 +768,7 @@ inline void ref_trsm<std::complex<double>>(hipblasSideMode_t           side,
                                            std::complex<double>*       B,
                                            int64_t                     ldb)
 {
-    cblas_ztrsm(CblasColMajor,
+    API_SUFFIX(cblas_ztrsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,

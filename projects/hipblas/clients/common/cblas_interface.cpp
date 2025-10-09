@@ -281,7 +281,7 @@ void ref_axpy<hipblasBfloat16, hipblasBfloat16>(int64_t                n,
         y_float[i * abs_incy] = bfloat16_to_float(y[i * abs_incy]);
     }
 
-    cblas_saxpy(n, bfloat16_to_float(alpha), x_float.data(), incx, y_float.data(), incy);
+    API_SUFFIX(cblas_saxpy)(n, bfloat16_to_float(alpha), x_float.data(), incx, y_float.data(), incy);
 
     for(size_t i = 0; i < n; i++)
     {
@@ -308,7 +308,7 @@ void ref_axpy<float, hipblasBfloat16>(int64_t                n,
         y_float[i * abs_incy] = bfloat16_to_float(y[i * abs_incy]);
     }
 
-    cblas_saxpy(n, alpha, x_float.data(), incx, y_float.data(), incy);
+    API_SUFFIX(cblas_saxpy)(n, alpha, x_float.data(), incx, y_float.data(), incy);
 
     for(size_t i = 0; i < n; i++)
     {
@@ -335,7 +335,7 @@ void ref_axpy<hipblasHalf, hipblasHalf>(int64_t            n,
         y_float[i * abs_incy] = half_to_float(y[i * abs_incy]);
     }
 
-    cblas_saxpy(n, half_to_float(alpha), x_float.data(), incx, y_float.data(), incy);
+    API_SUFFIX(cblas_saxpy)(n, half_to_float(alpha), x_float.data(), incx, y_float.data(), incy);
 
     for(size_t i = 0; i < n; i++)
     {
@@ -358,7 +358,7 @@ void ref_axpy<float, hipblasHalf>(
         y_float[i * abs_incy] = half_to_float(y[i * abs_incy]);
     }
 
-    cblas_saxpy(n, alpha, x_float.data(), incx, y_float.data(), incy);
+    API_SUFFIX(cblas_saxpy)(n, alpha, x_float.data(), incx, y_float.data(), incy);
 
     for(size_t i = 0; i < n; i++)
     {
@@ -370,14 +370,14 @@ template <>
 void ref_axpy<float, float>(
     int64_t n, const float alpha, const float* x, int64_t incx, float* y, int64_t incy)
 {
-    cblas_saxpy(n, alpha, x, incx, y, incy);
+    API_SUFFIX(cblas_saxpy)(n, alpha, x, incx, y, incy);
 }
 
 template <>
 void ref_axpy<double, double>(
     int64_t n, const double alpha, const double* x, int64_t incx, double* y, int64_t incy)
 {
-    cblas_daxpy(n, alpha, x, incx, y, incy);
+    API_SUFFIX(cblas_daxpy)(n, alpha, x, incx, y, incy);
 }
 
 template <>
@@ -388,7 +388,7 @@ void ref_axpy<std::complex<float>, std::complex<float>>(int64_t                 
                                                         std::complex<float>*       y,
                                                         int64_t                    incy)
 {
-    cblas_caxpy(n, &alpha, x, incx, y, incy);
+    API_SUFFIX(cblas_caxpy)(n, &alpha, x, incx, y, incy);
 }
 
 template <>
@@ -399,7 +399,7 @@ void ref_axpy<std::complex<double>, std::complex<double>>(int64_t               
                                                           std::complex<double>*       y,
                                                           int64_t                     incy)
 {
-    cblas_zaxpy(n, &alpha, x, incx, y, incy);
+    API_SUFFIX(cblas_zaxpy)(n, &alpha, x, incx, y, incy);
 }
 
 // asum
@@ -440,7 +440,7 @@ void ref_scal<hipblasHalf>(int64_t n, const hipblasHalf alpha, hipblasHalf* x, i
     for(size_t i = 0; i < n; i++)
         x_float[i * incx] = half_to_float(x[i * incx]);
 
-    cblas_sscal(n, half_to_float(alpha), x_float.data(), incx);
+    API_SUFFIX(cblas_sscal)(n, half_to_float(alpha), x_float.data(), incx);
 
     for(size_t i = 0; i < n; i++)
         x[i * incx] = float_to_half(x_float[i * incx]);
@@ -460,7 +460,7 @@ void ref_scal<hipblasBfloat16>(int64_t               n,
     for(size_t i = 0; i < n; i++)
         x_float[i * incx] = bfloat16_to_float(x[i * incx]);
 
-    cblas_sscal(n, bfloat16_to_float(alpha), x_float.data(), incx);
+    API_SUFFIX(cblas_sscal)(n, bfloat16_to_float(alpha), x_float.data(), incx);
 
     for(size_t i = 0; i < n; i++)
         x[i * incx] = float_to_bfloat16(x_float[i * incx]);
@@ -477,7 +477,7 @@ void ref_scal<hipblasHalf, float>(int64_t n, const float alpha, hipblasHalf* x, 
     for(size_t i = 0; i < n; i++)
         x_float[i * incx] = half_to_float(x[i * incx]);
 
-    cblas_sscal(n, alpha, x_float.data(), incx);
+    API_SUFFIX(cblas_sscal)(n, alpha, x_float.data(), incx);
 
     for(size_t i = 0; i < n; i++)
         x[i * incx] = float_to_half(x_float[i * incx]);
@@ -497,7 +497,7 @@ void ref_scal<hipblasBfloat16, float>(int64_t          n,
     for(size_t i = 0; i < n; i++)
         x_float[i * incx] = bfloat16_to_float(x[i * incx]);
 
-    cblas_sscal(n, alpha, x_float.data(), incx);
+    API_SUFFIX(cblas_sscal)(n, alpha, x_float.data(), incx);
 
     for(size_t i = 0; i < n; i++)
         x[i * incx] = float_to_bfloat16(x_float[i * incx]);
@@ -506,13 +506,13 @@ void ref_scal<hipblasBfloat16, float>(int64_t          n,
 template <>
 void ref_scal<float>(int64_t n, const float alpha, float* x, int64_t incx)
 {
-    cblas_sscal(n, alpha, x, incx);
+    API_SUFFIX(cblas_sscal)(n, alpha, x, incx);
 }
 
 template <>
 void ref_scal<double>(int64_t n, const double alpha, double* x, int64_t incx)
 {
-    cblas_dscal(n, alpha, x, incx);
+    API_SUFFIX(cblas_dscal)(n, alpha, x, incx);
 }
 
 template <>
@@ -521,7 +521,7 @@ void ref_scal<std::complex<float>>(int64_t                   n,
                                    std::complex<float>*      x,
                                    int64_t                   incx)
 {
-    cblas_cscal(n, &alpha, x, incx);
+    API_SUFFIX(cblas_cscal)(n, &alpha, x, incx);
 }
 
 template <>
@@ -530,7 +530,7 @@ void ref_scal<std::complex<float>, float>(int64_t              n,
                                           std::complex<float>* x,
                                           int64_t              incx)
 {
-    cblas_csscal(n, alpha, x, incx);
+    API_SUFFIX(cblas_csscal)(n, alpha, x, incx);
 }
 
 template <>
@@ -539,7 +539,7 @@ void ref_scal<std::complex<double>>(int64_t                    n,
                                     std::complex<double>*      x,
                                     int64_t                    incx)
 {
-    cblas_zscal(n, &alpha, x, incx);
+    API_SUFFIX(cblas_zscal)(n, &alpha, x, incx);
 }
 
 template <>
@@ -548,61 +548,61 @@ void ref_scal<std::complex<double>, double>(int64_t               n,
                                             std::complex<double>* x,
                                             int64_t               incx)
 {
-    cblas_zdscal(n, alpha, x, incx);
+    API_SUFFIX(cblas_zdscal)(n, alpha, x, incx);
 }
 
 // copy
 template <>
 void ref_copy<float>(int64_t n, float* x, int64_t incx, float* y, int64_t incy)
 {
-    cblas_scopy(n, x, incx, y, incy);
+    API_SUFFIX(cblas_scopy)(n, x, incx, y, incy);
 }
 
 template <>
 void ref_copy<double>(int64_t n, double* x, int64_t incx, double* y, int64_t incy)
 {
-    cblas_dcopy(n, x, incx, y, incy);
+    API_SUFFIX(cblas_dcopy)(n, x, incx, y, incy);
 }
 
 template <>
 void ref_copy<std::complex<float>>(
     int64_t n, std::complex<float>* x, int64_t incx, std::complex<float>* y, int64_t incy)
 {
-    cblas_ccopy(n, x, incx, y, incy);
+    API_SUFFIX(cblas_ccopy)(n, x, incx, y, incy);
 }
 
 template <>
 void ref_copy<std::complex<double>>(
     int64_t n, std::complex<double>* x, int64_t incx, std::complex<double>* y, int64_t incy)
 {
-    cblas_zcopy(n, x, incx, y, incy);
+    API_SUFFIX(cblas_zcopy)(n, x, incx, y, incy);
 }
 
 // swap
 template <>
 void ref_swap<float>(int64_t n, float* x, int64_t incx, float* y, int64_t incy)
 {
-    cblas_sswap(n, x, incx, y, incy);
+    API_SUFFIX(cblas_sswap)(n, x, incx, y, incy);
 }
 
 template <>
 void ref_swap<double>(int64_t n, double* x, int64_t incx, double* y, int64_t incy)
 {
-    cblas_dswap(n, x, incx, y, incy);
+    API_SUFFIX(cblas_dswap)(n, x, incx, y, incy);
 }
 
 template <>
 void ref_swap<std::complex<float>>(
     int64_t n, std::complex<float>* x, int64_t incx, std::complex<float>* y, int64_t incy)
 {
-    cblas_cswap(n, x, incx, y, incy);
+    API_SUFFIX(cblas_cswap)(n, x, incx, y, incy);
 }
 
 template <>
 void ref_swap<std::complex<double>>(
     int64_t n, std::complex<double>* x, int64_t incx, std::complex<double>* y, int64_t incy)
 {
-    cblas_zswap(n, x, incx, y, incy);
+    API_SUFFIX(cblas_zswap)(n, x, incx, y, incy);
 }
 
 // dot
@@ -624,7 +624,7 @@ void ref_dot<hipblasHalf>(int64_t            n,
         x_float[i * abs_incx] = half_to_float(x[i * abs_incx]);
         y_float[i * abs_incy] = half_to_float(y[i * abs_incy]);
     }
-    *result = float_to_half(cblas_sdot(n, x_float.data(), incx, y_float.data(), incy));
+    *result = float_to_half(API_SUFFIX(cblas_sdot)(n, x_float.data(), incx, y_float.data(), incy));
 }
 
 template <>
@@ -645,21 +645,21 @@ void ref_dot<hipblasBfloat16>(int64_t                n,
         x_float[i * abs_incx] = bfloat16_to_float(x[i * abs_incx]);
         y_float[i * abs_incy] = bfloat16_to_float(y[i * abs_incy]);
     }
-    *result = float_to_bfloat16(cblas_sdot(n, x_float.data(), incx, y_float.data(), incy));
+    *result = float_to_bfloat16(API_SUFFIX(cblas_sdot)(n, x_float.data(), incx, y_float.data(), incy));
 }
 
 template <>
 void ref_dot<float>(
     int64_t n, const float* x, int64_t incx, const float* y, int64_t incy, float* result)
 {
-    *result = cblas_sdot(n, x, incx, y, incy);
+    *result = API_SUFFIX(cblas_sdot)(n, x, incx, y, incy);
 }
 
 template <>
 void ref_dot<double>(
     int64_t n, const double* x, int64_t incx, const double* y, int64_t incy, double* result)
 {
-    *result = cblas_ddot(n, x, incx, y, incy);
+    *result = API_SUFFIX(cblas_ddot)(n, x, incx, y, incy);
 }
 
 template <>
@@ -670,7 +670,7 @@ void ref_dot<std::complex<float>>(int64_t                    n,
                                   int64_t                    incy,
                                   std::complex<float>*       result)
 {
-    cblas_cdotu_sub(n, x, incx, y, incy, result);
+    API_SUFFIX(cblas_cdotu_sub)(n, x, incx, y, incy, result);
 }
 
 template <>
@@ -681,7 +681,7 @@ void ref_dot<std::complex<double>>(int64_t                     n,
                                    int64_t                     incy,
                                    std::complex<double>*       result)
 {
-    cblas_zdotu_sub(n, x, incx, y, incy, result);
+    API_SUFFIX(cblas_zdotu_sub)(n, x, incx, y, incy, result);
 }
 
 template <>
@@ -732,7 +732,7 @@ void ref_dotc<std::complex<float>>(int64_t                    n,
                                    int64_t                    incy,
                                    std::complex<float>*       result)
 {
-    cblas_cdotc_sub(n, x, incx, y, incy, result);
+    API_SUFFIX(cblas_cdotc_sub)(n, x, incx, y, incy, result);
 }
 
 template <>
@@ -743,7 +743,7 @@ void ref_dotc<std::complex<double>>(int64_t                     n,
                                     int64_t                     incy,
                                     std::complex<double>*       result)
 {
-    cblas_zdotc_sub(n, x, incx, y, incy, result);
+    API_SUFFIX(cblas_zdotc_sub)(n, x, incx, y, incy, result);
 }
 
 // nrm2
@@ -761,7 +761,7 @@ void ref_nrm2<hipblasHalf, hipblasHalf>(int64_t            n,
     for(size_t i = 0; i < n; i++)
         x_float[i * incx] = half_to_float(x[i * incx]);
 
-    *result = float_to_half(cblas_snrm2(n, x_float.data(), incx));
+    *result = float_to_half(API_SUFFIX(cblas_snrm2)(n, x_float.data(), incx));
 }
 
 template <>
@@ -778,19 +778,19 @@ void ref_nrm2<hipblasBfloat16, hipblasBfloat16>(int64_t                n,
     for(size_t i = 0; i < n; i++)
         x_float[i * incx] = bfloat16_to_float(x[i * incx]);
 
-    *result = float_to_bfloat16(cblas_snrm2(n, x_float.data(), incx));
+    *result = float_to_bfloat16(API_SUFFIX(cblas_snrm2)(n, x_float.data(), incx));
 }
 
 template <>
 void ref_nrm2<float, float>(int64_t n, const float* x, int64_t incx, float* result)
 {
-    *result = cblas_snrm2(n, x, incx);
+    *result = API_SUFFIX(cblas_snrm2)(n, x, incx);
 }
 
 template <>
 void ref_nrm2<double, double>(int64_t n, const double* x, int64_t incx, double* result)
 {
-    *result = cblas_dnrm2(n, x, incx);
+    *result = API_SUFFIX(cblas_dnrm2)(n, x, incx);
 }
 
 template <>
@@ -799,7 +799,7 @@ void ref_nrm2<std::complex<float>, float>(int64_t                    n,
                                           int64_t                    incx,
                                           float*                     result)
 {
-    *result = cblas_scnrm2(n, x, incx);
+    *result = API_SUFFIX(cblas_scnrm2)(n, x, incx);
 }
 
 template <>
@@ -808,7 +808,7 @@ void ref_nrm2<std::complex<double>, double>(int64_t                     n,
                                             int64_t                     incx,
                                             double*                     result)
 {
-    *result = cblas_dznrm2(n, x, incx);
+    *result = API_SUFFIX(cblas_dznrm2)(n, x, incx);
 }
 
 ///////////////////
@@ -879,7 +879,7 @@ void ref_rot<hipblasHalf>(int64_t      n,
     const float c_float = half_to_float(c);
     const float s_float = half_to_float(s);
 
-    cblas_srot(n, x_float.data(), incx, y_float.data(), incy, c_float, s_float);
+    API_SUFFIX(cblas_srot)(n, x_float.data(), incx, y_float.data(), incy, c_float, s_float);
 
     for(size_t i = 0; i < n; i++)
     {
@@ -917,7 +917,7 @@ void ref_rot<hipblasBfloat16>(int64_t          n,
     const float c_float = bfloat16_to_float(c);
     const float s_float = bfloat16_to_float(s);
 
-    cblas_srot(n, x_float.data(), incx, y_float.data(), incy, c_float, s_float);
+    API_SUFFIX(cblas_srot)(n, x_float.data(), incx, y_float.data(), incy, c_float, s_float);
 
     for(size_t i = 0; i < n; i++)
     {
@@ -929,14 +929,14 @@ void ref_rot<hipblasBfloat16>(int64_t          n,
 template <>
 void ref_rot<float>(int64_t n, float* x, int64_t incx, float* y, int64_t incy, float c, float s)
 {
-    cblas_srot(n, x, incx, y, incy, c, s);
+    API_SUFFIX(cblas_srot)(n, x, incx, y, incy, c, s);
 }
 
 template <>
 void ref_rot<double>(
     int64_t n, double* x, int64_t incx, double* y, int64_t incy, double c, double s)
 {
-    cblas_drot(n, x, incx, y, incy, c, s);
+    API_SUFFIX(cblas_drot)(n, x, incx, y, incy, c, s);
 }
 
 template <>
@@ -1017,13 +1017,13 @@ void ref_rot<std::complex<double>, double, double>(int64_t               n,
 template <>
 void ref_rotg<float>(float* a, float* b, float* c, float* s)
 {
-    cblas_srotg(a, b, c, s);
+    API_SUFFIX(cblas_srotg)(a, b, c, s);
 }
 
 template <>
 void ref_rotg<double>(double* a, double* b, double* c, double* s)
 {
-    cblas_drotg(a, b, c, s);
+    API_SUFFIX(cblas_drotg)(a, b, c, s);
 }
 
 template <>
@@ -1085,19 +1085,19 @@ See hipblas_iamax_imin_fef.hpp
 template <>
 void ref_iamax<float>(int64_t n, const float* x, int64_t incx, int64_t* result)
 {
-    *result = (int64_t)cblas_isamax(n, x, incx);
+    *result = (int64_t)API_SUFFIX(cblas_isamax)(n, x, incx);
 }
 
 template <>
 void ref_iamax<double>(int64_t n, const double* x, int64_t incx, int64_t* result)
 {
-    *result = (int64_t)cblas_idamax(n, x, incx);
+    *result = (int64_t)API_SUFFIX(cblas_idamax)(n, x, incx);
 }
 
 template <>
 void ref_iamax<std::complex<float>>(int64_t n, const std::complex<float>* x, int64_t incx, int64_t* result)
 {
-    *result = (int64_t)cblas_icamax(n, x, incx);
+    *result = (int64_t)API_SUFFIX(cblas_icamax)(n, x, incx);
 }
 
 template <>
@@ -1106,7 +1106,7 @@ void ref_iamax<std::complex<double>>(int64_t                     n,
                                      int64_t                     incx,
                                      int64_t*                    result)
 {
-    *result = (int64_t)cblas_izamax(n, x, incx);
+    *result = (int64_t)API_SUFFIX(cblas_izamax)(n, x, incx);
 }
 
 // amin
@@ -1201,7 +1201,7 @@ void ref_gbmv<float>(hipblasOperation_t transA,
                      float*             y,
                      int64_t            incy)
 {
-    cblas_sgbmv(CblasColMajor,
+    API_SUFFIX(cblas_sgbmv)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 m,
                 n,
@@ -1232,7 +1232,7 @@ void ref_gbmv<double>(hipblasOperation_t transA,
                       double*            y,
                       int64_t            incy)
 {
-    cblas_dgbmv(CblasColMajor,
+    API_SUFFIX(cblas_dgbmv)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 m,
                 n,
@@ -1263,7 +1263,7 @@ void ref_gbmv<std::complex<float>>(hipblasOperation_t   transA,
                                    std::complex<float>* y,
                                    int64_t              incy)
 {
-    cblas_cgbmv(CblasColMajor,
+    API_SUFFIX(cblas_cgbmv)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 m,
                 n,
@@ -1294,7 +1294,7 @@ void ref_gbmv<std::complex<double>>(hipblasOperation_t    transA,
                                     std::complex<double>* y,
                                     int64_t               incy)
 {
-    cblas_zgbmv(CblasColMajor,
+    API_SUFFIX(cblas_zgbmv)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 m,
                 n,
@@ -1324,7 +1324,7 @@ void ref_gemv<float>(hipblasOperation_t transA,
                      float*             y,
                      int64_t            incy)
 {
-    cblas_sgemv(
+    API_SUFFIX(cblas_sgemv)(
         CblasColMajor, (CBLAS_TRANSPOSE)transA, m, n, alpha, A, lda, x, incx, beta, y, incy);
 }
 
@@ -1341,7 +1341,7 @@ void ref_gemv<double>(hipblasOperation_t transA,
                       double*            y,
                       int64_t            incy)
 {
-    cblas_dgemv(
+    API_SUFFIX(cblas_dgemv)(
         CblasColMajor, (CBLAS_TRANSPOSE)transA, m, n, alpha, A, lda, x, incx, beta, y, incy);
 }
 
@@ -1358,7 +1358,7 @@ void ref_gemv<std::complex<float>>(hipblasOperation_t   transA,
                                    std::complex<float>* y,
                                    int64_t              incy)
 {
-    cblas_cgemv(
+    API_SUFFIX(cblas_cgemv)(
         CblasColMajor, (CBLAS_TRANSPOSE)transA, m, n, &alpha, A, lda, x, incx, &beta, y, incy);
 }
 
@@ -1375,7 +1375,7 @@ void ref_gemv<std::complex<double>>(hipblasOperation_t    transA,
                                     std::complex<double>* y,
                                     int64_t               incy)
 {
-    cblas_zgemv(
+    API_SUFFIX(cblas_zgemv)(
         CblasColMajor, (CBLAS_TRANSPOSE)transA, m, n, &alpha, A, lda, x, incx, &beta, y, incy);
 }
 
@@ -1391,7 +1391,7 @@ void ref_ger<float, false>(int64_t m,
                            float*  A,
                            int64_t lda)
 {
-    cblas_sger(CblasColMajor, m, n, alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_sger)(CblasColMajor, m, n, alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1405,7 +1405,7 @@ void ref_ger<double, false>(int64_t m,
                             double* A,
                             int64_t lda)
 {
-    cblas_dger(CblasColMajor, m, n, alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_dger)(CblasColMajor, m, n, alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1419,7 +1419,7 @@ void ref_ger<std::complex<float>, false>(int64_t              m,
                                          std::complex<float>* A,
                                          int64_t              lda)
 {
-    cblas_cgeru(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_cgeru)(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1433,7 +1433,7 @@ void ref_ger<std::complex<float>, true>(int64_t              m,
                                         std::complex<float>* A,
                                         int64_t              lda)
 {
-    cblas_cgerc(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_cgerc)(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1447,7 +1447,7 @@ void ref_ger<std::complex<double>, false>(int64_t               m,
                                           std::complex<double>* A,
                                           int64_t               lda)
 {
-    cblas_zgeru(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_zgeru)(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1461,7 +1461,7 @@ void ref_ger<std::complex<double>, true>(int64_t               m,
                                          std::complex<double>* A,
                                          int64_t               lda)
 {
-    cblas_zgerc(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_zgerc)(CblasColMajor, m, n, &alpha, x, incx, y, incy, A, lda);
 }
 
 // hbmv
@@ -1478,7 +1478,7 @@ void ref_hbmv<std::complex<float>>(hipblasFillMode_t    uplo,
                                    std::complex<float>* y,
                                    int64_t              incy)
 {
-    cblas_chbmv(CblasColMajor, (CBLAS_UPLO)uplo, n, k, &alpha, A, lda, x, incx, &beta, y, incy);
+    API_SUFFIX(cblas_chbmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, k, &alpha, A, lda, x, incx, &beta, y, incy);
 }
 
 template <>
@@ -1494,7 +1494,7 @@ void ref_hbmv<std::complex<double>>(hipblasFillMode_t     uplo,
                                     std::complex<double>* y,
                                     int64_t               incy)
 {
-    cblas_zhbmv(CblasColMajor, (CBLAS_UPLO)uplo, n, k, &alpha, A, lda, x, incx, &beta, y, incy);
+    API_SUFFIX(cblas_zhbmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, k, &alpha, A, lda, x, incx, &beta, y, incy);
 }
 
 // hemv
@@ -1510,7 +1510,7 @@ void ref_hemv<std::complex<float>>(hipblasFillMode_t    uplo,
                                    std::complex<float>* y,
                                    int64_t              incy)
 {
-    cblas_chemv(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, A, lda, x, incx, &beta, y, incy);
+    API_SUFFIX(cblas_chemv)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, A, lda, x, incx, &beta, y, incy);
 }
 
 template <>
@@ -1525,7 +1525,7 @@ void ref_hemv<std::complex<double>>(hipblasFillMode_t     uplo,
                                     std::complex<double>* y,
                                     int64_t               incy)
 {
-    cblas_zhemv(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, A, lda, x, incx, &beta, y, incy);
+    API_SUFFIX(cblas_zhemv)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, A, lda, x, incx, &beta, y, incy);
 }
 
 // her
@@ -1538,7 +1538,7 @@ void ref_her<std::complex<float>, float>(hipblasFillMode_t    uplo,
                                          std::complex<float>* A,
                                          int64_t              lda)
 {
-    cblas_cher(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
+    API_SUFFIX(cblas_cher)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
 }
 
 template <>
@@ -1550,7 +1550,7 @@ void ref_her<std::complex<double>, double>(hipblasFillMode_t     uplo,
                                            std::complex<double>* A,
                                            int64_t               lda)
 {
-    cblas_zher(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
+    API_SUFFIX(cblas_zher)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
 }
 
 // her2
@@ -1565,7 +1565,7 @@ void ref_her2<std::complex<float>>(hipblasFillMode_t    uplo,
                                    std::complex<float>* A,
                                    int64_t              lda)
 {
-    cblas_cher2(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_cher2)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1579,7 +1579,7 @@ void ref_her2<std::complex<double>>(hipblasFillMode_t     uplo,
                                     std::complex<double>* A,
                                     int64_t               lda)
 {
-    cblas_zher2(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_zher2)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, A, lda);
 }
 
 // hpmv
@@ -1594,7 +1594,7 @@ void ref_hpmv<std::complex<float>>(hipblasFillMode_t    uplo,
                                    std::complex<float>* y,
                                    int64_t              incy)
 {
-    cblas_chpmv(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, AP, x, incx, &beta, y, incy);
+    API_SUFFIX(cblas_chpmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, AP, x, incx, &beta, y, incy);
 }
 
 template <>
@@ -1608,7 +1608,7 @@ void ref_hpmv<std::complex<double>>(hipblasFillMode_t     uplo,
                                     std::complex<double>* y,
                                     int64_t               incy)
 {
-    cblas_zhpmv(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, AP, x, incx, &beta, y, incy);
+    API_SUFFIX(cblas_zhpmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, AP, x, incx, &beta, y, incy);
 }
 
 // hpr
@@ -1620,7 +1620,7 @@ void ref_hpr(hipblasFillMode_t    uplo,
              int64_t              incx,
              std::complex<float>* AP)
 {
-    cblas_chpr(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
+    API_SUFFIX(cblas_chpr)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
 }
 
 template <>
@@ -1631,7 +1631,7 @@ void ref_hpr(hipblasFillMode_t     uplo,
              int64_t               incx,
              std::complex<double>* AP)
 {
-    cblas_zhpr(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
+    API_SUFFIX(cblas_zhpr)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
 }
 
 // hpr2
@@ -1645,7 +1645,7 @@ void ref_hpr2(hipblasFillMode_t    uplo,
               int64_t              incy,
               std::complex<float>* AP)
 {
-    cblas_chpr2(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, AP);
+    API_SUFFIX(cblas_chpr2)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, AP);
 }
 
 template <>
@@ -1658,7 +1658,7 @@ void ref_hpr2(hipblasFillMode_t     uplo,
               int64_t               incy,
               std::complex<double>* AP)
 {
-    cblas_zhpr2(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, AP);
+    API_SUFFIX(cblas_zhpr2)(CblasColMajor, (CBLAS_UPLO)uplo, n, &alpha, x, incx, y, incy, AP);
 }
 
 // sbmv
@@ -1675,7 +1675,7 @@ void ref_sbmv(hipblasFillMode_t uplo,
               float*            y,
               int64_t           incy)
 {
-    cblas_ssbmv(CblasColMajor, (CBLAS_UPLO)uplo, n, k, alpha, A, lda, x, incx, beta, y, incy);
+    API_SUFFIX(cblas_ssbmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, k, alpha, A, lda, x, incx, beta, y, incy);
 }
 
 template <>
@@ -1691,7 +1691,7 @@ void ref_sbmv(hipblasFillMode_t uplo,
               double*           y,
               int64_t           incy)
 {
-    cblas_dsbmv(CblasColMajor, (CBLAS_UPLO)uplo, n, k, alpha, A, lda, x, incx, beta, y, incy);
+    API_SUFFIX(cblas_dsbmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, k, alpha, A, lda, x, incx, beta, y, incy);
 }
 
 // spmv
@@ -1706,7 +1706,7 @@ void ref_spmv(hipblasFillMode_t uplo,
               float*            y,
               int64_t           incy)
 {
-    cblas_sspmv(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, AP, x, incx, beta, y, incy);
+    API_SUFFIX(cblas_sspmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, AP, x, incx, beta, y, incy);
 }
 
 template <>
@@ -1720,20 +1720,20 @@ void ref_spmv(hipblasFillMode_t uplo,
               double*           y,
               int64_t           incy)
 {
-    cblas_dspmv(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, AP, x, incx, beta, y, incy);
+    API_SUFFIX(cblas_dspmv)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, AP, x, incx, beta, y, incy);
 }
 
 // spr
 template <>
 void ref_spr(hipblasFillMode_t uplo, int64_t n, float alpha, float* x, int64_t incx, float* AP)
 {
-    cblas_sspr(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
+    API_SUFFIX(cblas_sspr)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
 }
 
 template <>
 void ref_spr(hipblasFillMode_t uplo, int64_t n, double alpha, double* x, int64_t incx, double* AP)
 {
-    cblas_dspr(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
+    API_SUFFIX(cblas_dspr)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, AP);
 }
 
 template <>
@@ -1769,7 +1769,7 @@ void ref_spr2(hipblasFillMode_t uplo,
               int64_t           incy,
               float*            AP)
 {
-    cblas_sspr2(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, y, incy, AP);
+    API_SUFFIX(cblas_sspr2)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, y, incy, AP);
 }
 
 template <>
@@ -1782,7 +1782,7 @@ void ref_spr2(hipblasFillMode_t uplo,
               int64_t           incy,
               double*           AP)
 {
-    cblas_dspr2(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, y, incy, AP);
+    API_SUFFIX(cblas_dspr2)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, y, incy, AP);
 }
 
 // symv
@@ -1798,7 +1798,7 @@ void ref_symv(hipblasFillMode_t uplo,
               float*            y,
               int64_t           incy)
 {
-    cblas_ssymv(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, A, lda, x, incx, beta, y, incy);
+    API_SUFFIX(cblas_ssymv)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, A, lda, x, incx, beta, y, incy);
 }
 
 template <>
@@ -1813,7 +1813,7 @@ void ref_symv(hipblasFillMode_t uplo,
               double*           y,
               int64_t           incy)
 {
-    cblas_dsymv(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, A, lda, x, incx, beta, y, incy);
+    API_SUFFIX(cblas_dsymv)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, A, lda, x, incx, beta, y, incy);
 }
 
 template <>
@@ -1851,7 +1851,7 @@ template <>
 void ref_syr<float>(
     hipblasFillMode_t uplo, int64_t n, float alpha, float* x, int64_t incx, float* A, int64_t lda)
 {
-    cblas_ssyr(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
+    API_SUFFIX(cblas_ssyr)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
 }
 
 template <>
@@ -1863,7 +1863,7 @@ void ref_syr<double>(hipblasFillMode_t uplo,
                      double*           A,
                      int64_t           lda)
 {
-    cblas_dsyr(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
+    API_SUFFIX(cblas_dsyr)(CblasColMajor, (CBLAS_UPLO)uplo, n, alpha, x, incx, A, lda);
 }
 
 template <>
@@ -1903,7 +1903,7 @@ void ref_syr2(hipblasFillMode_t uplo,
               float*            A,
               int64_t           lda)
 {
-    cblas_ssyr2(CblasColMajor, CBLAS_UPLO(uplo), n, alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_ssyr2)(CblasColMajor, CBLAS_UPLO(uplo), n, alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1917,7 +1917,7 @@ void ref_syr2(hipblasFillMode_t uplo,
               double*           A,
               int64_t           lda)
 {
-    cblas_dsyr2(CblasColMajor, CBLAS_UPLO(uplo), n, alpha, x, incx, y, incy, A, lda);
+    API_SUFFIX(cblas_dsyr2)(CblasColMajor, CBLAS_UPLO(uplo), n, alpha, x, incx, y, incy, A, lda);
 }
 
 template <>
@@ -1960,7 +1960,7 @@ void ref_tbmv<float>(hipblasFillMode_t  uplo,
                      float*             x,
                      int64_t            incx)
 {
-    cblas_stbmv(CblasColMajor,
+    API_SUFFIX(cblas_stbmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -1983,7 +1983,7 @@ void ref_tbmv<double>(hipblasFillMode_t  uplo,
                       double*            x,
                       int64_t            incx)
 {
-    cblas_dtbmv(CblasColMajor,
+    API_SUFFIX(cblas_dtbmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2006,7 +2006,7 @@ void ref_tbmv<std::complex<float>>(hipblasFillMode_t          uplo,
                                    std::complex<float>*       x,
                                    int64_t                    incx)
 {
-    cblas_ctbmv(CblasColMajor,
+    API_SUFFIX(cblas_ctbmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2029,7 +2029,7 @@ void ref_tbmv<std::complex<double>>(hipblasFillMode_t           uplo,
                                     std::complex<double>*       x,
                                     int64_t                     incx)
 {
-    cblas_ztbmv(CblasColMajor,
+    API_SUFFIX(cblas_ztbmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2053,7 +2053,7 @@ void ref_tbsv<float>(hipblasFillMode_t  uplo,
                      float*             x,
                      int64_t            incx)
 {
-    cblas_stbsv(CblasColMajor,
+    API_SUFFIX(cblas_stbsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2076,7 +2076,7 @@ void ref_tbsv<double>(hipblasFillMode_t  uplo,
                       double*            x,
                       int64_t            incx)
 {
-    cblas_dtbsv(CblasColMajor,
+    API_SUFFIX(cblas_dtbsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2099,7 +2099,7 @@ void ref_tbsv<std::complex<float>>(hipblasFillMode_t          uplo,
                                    std::complex<float>*       x,
                                    int64_t                    incx)
 {
-    cblas_ctbsv(CblasColMajor,
+    API_SUFFIX(cblas_ctbsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2122,7 +2122,7 @@ void ref_tbsv<std::complex<double>>(hipblasFillMode_t           uplo,
                                     std::complex<double>*       x,
                                     int64_t                     incx)
 {
-    cblas_ztbsv(CblasColMajor,
+    API_SUFFIX(cblas_ztbsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2144,7 +2144,7 @@ void ref_tpmv(hipblasFillMode_t  uplo,
               float*             x,
               int64_t            incx)
 {
-    cblas_stpmv(
+    API_SUFFIX(cblas_stpmv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), m, A, x, incx);
 }
 
@@ -2157,7 +2157,7 @@ void ref_tpmv(hipblasFillMode_t  uplo,
               double*            x,
               int64_t            incx)
 {
-    cblas_dtpmv(
+    API_SUFFIX(cblas_dtpmv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), m, A, x, incx);
 }
 
@@ -2170,7 +2170,7 @@ void ref_tpmv(hipblasFillMode_t          uplo,
               std::complex<float>*       x,
               int64_t                    incx)
 {
-    cblas_ctpmv(
+    API_SUFFIX(cblas_ctpmv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), m, A, x, incx);
 }
 
@@ -2183,7 +2183,7 @@ void ref_tpmv(hipblasFillMode_t           uplo,
               std::complex<double>*       x,
               int64_t                     incx)
 {
-    cblas_ztpmv(
+    API_SUFFIX(cblas_ztpmv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), m, A, x, incx);
 }
 
@@ -2197,7 +2197,7 @@ void ref_tpsv(hipblasFillMode_t  uplo,
               float*             x,
               int64_t            incx)
 {
-    cblas_stpsv(
+    API_SUFFIX(cblas_stpsv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), n, AP, x, incx);
 }
 
@@ -2210,7 +2210,7 @@ void ref_tpsv(hipblasFillMode_t  uplo,
               double*            x,
               int64_t            incx)
 {
-    cblas_dtpsv(
+    API_SUFFIX(cblas_dtpsv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), n, AP, x, incx);
 }
 
@@ -2223,7 +2223,7 @@ void ref_tpsv(hipblasFillMode_t          uplo,
               std::complex<float>*       x,
               int64_t                    incx)
 {
-    cblas_ctpsv(
+    API_SUFFIX(cblas_ctpsv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), n, AP, x, incx);
 }
 
@@ -2236,7 +2236,7 @@ void ref_tpsv(hipblasFillMode_t           uplo,
               std::complex<double>*       x,
               int64_t                     incx)
 {
-    cblas_ztpsv(
+    API_SUFFIX(cblas_ztpsv)(
         CblasColMajor, CBLAS_UPLO(uplo), CBLAS_TRANSPOSE(transA), CBLAS_DIAG(diag), n, AP, x, incx);
 }
 
@@ -2251,7 +2251,7 @@ void ref_trmv<float>(hipblasFillMode_t  uplo,
                      float*             x,
                      int64_t            incx)
 {
-    cblas_strmv(CblasColMajor,
+    API_SUFFIX(cblas_strmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2272,7 +2272,7 @@ void ref_trmv<double>(hipblasFillMode_t  uplo,
                       double*            x,
                       int64_t            incx)
 {
-    cblas_dtrmv(CblasColMajor,
+    API_SUFFIX(cblas_dtrmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2293,7 +2293,7 @@ void ref_trmv<std::complex<float>>(hipblasFillMode_t          uplo,
                                    std::complex<float>*       x,
                                    int64_t                    incx)
 {
-    cblas_ctrmv(CblasColMajor,
+    API_SUFFIX(cblas_ctrmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2314,7 +2314,7 @@ void ref_trmv<std::complex<double>>(hipblasFillMode_t           uplo,
                                     std::complex<double>*       x,
                                     int64_t                     incx)
 {
-    cblas_ztrmv(CblasColMajor,
+    API_SUFFIX(cblas_ztrmv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2337,7 +2337,7 @@ void ref_trsv<float>(hipblasHandle_t    handle,
                      float*             x,
                      int64_t            incx)
 {
-    cblas_strsv(CblasColMajor,
+    API_SUFFIX(cblas_strsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2359,7 +2359,7 @@ void ref_trsv<double>(hipblasHandle_t    handle,
                       double*            x,
                       int64_t            incx)
 {
-    cblas_dtrsv(CblasColMajor,
+    API_SUFFIX(cblas_dtrsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2381,7 +2381,7 @@ void ref_trsv<std::complex<float>>(hipblasHandle_t            handle,
                                    std::complex<float>*       x,
                                    int64_t                    incx)
 {
-    cblas_ctrsv(CblasColMajor,
+    API_SUFFIX(cblas_ctrsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2403,7 +2403,7 @@ void ref_trsv<std::complex<double>>(hipblasHandle_t             handle,
                                     std::complex<double>*       x,
                                     int64_t                     incx)
 {
-    cblas_ztrsv(CblasColMajor,
+    API_SUFFIX(cblas_ztrsv)(CblasColMajor,
                 CBLAS_UPLO(uplo),
                 CBLAS_TRANSPOSE(transA),
                 CBLAS_DIAG(diag),
@@ -2655,7 +2655,7 @@ void ref_gemm<hipblasHalf>(hipblasOperation_t transA,
 
     // just directly cast, since transA, transB are integers in the enum
     // printf("transA: rocblas =%d, cblas=%d\n", transA, (CBLAS_TRANSPOSE)transA );
-    cblas_sgemm(CblasColMajor,
+    API_SUFFIX(cblas_sgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -2717,7 +2717,7 @@ void ref_gemm<hipblasHalf, hipblasHalf, float>(hipblasOperation_t transA,
 
     // just directly cast, since transA, transB are integers in the enum
     // printf("transA: rocblas =%d, cblas=%d\n", transA, (CBLAS_TRANSPOSE)transA );
-    cblas_sgemm(CblasColMajor,
+    API_SUFFIX(cblas_sgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -2773,7 +2773,7 @@ void ref_gemm<hipblasHalf, float, float>(hipblasOperation_t transA,
 
     // just directly cast, since transA, transB are integers in the enum
     // printf("transA: rocblas =%d, cblas=%d\n", transA, (CBLAS_TRANSPOSE)transA );
-    cblas_sgemm(CblasColMajor,
+    API_SUFFIX(cblas_sgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -2830,7 +2830,7 @@ void ref_gemm<hipblasBfloat16, hipblasBfloat16, float>(hipblasOperation_t transA
 
     // just directly cast, since transA, transB are integers in the enum
     // printf("transA: rocblas =%d, cblas=%d\n", transA, (CBLAS_TRANSPOSE)transA );
-    cblas_sgemm(CblasColMajor,
+    API_SUFFIX(cblas_sgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -2886,7 +2886,7 @@ void ref_gemm<hipblasBfloat16, float, float>(hipblasOperation_t transA,
 
     // just directly cast, since transA, transB are integers in the enum
     // printf("transA: rocblas =%d, cblas=%d\n", transA, (CBLAS_TRANSPOSE)transA );
-    cblas_sgemm(CblasColMajor,
+    API_SUFFIX(cblas_sgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -2919,7 +2919,7 @@ void ref_gemm<float>(hipblasOperation_t transA,
 {
     // just directly cast, since transA, transB are integers in the enum
     // printf("transA: hipblas =%d, cblas=%d\n", transA, (CBLAS_TRANSPOSE)transA );
-    cblas_sgemm(CblasColMajor,
+    API_SUFFIX(cblas_sgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -2950,7 +2950,7 @@ void ref_gemm<double>(hipblasOperation_t transA,
                       double*            C,
                       int64_t            ldc)
 {
-    cblas_dgemm(CblasColMajor,
+    API_SUFFIX(cblas_dgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -2982,7 +2982,7 @@ void ref_gemm<std::complex<float>>(hipblasOperation_t   transA,
                                    int64_t              ldc)
 {
     //just directly cast, since transA, transB are integers in the enum
-    cblas_cgemm(CblasColMajor,
+    API_SUFFIX(cblas_cgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -3013,7 +3013,7 @@ void ref_gemm<std::complex<double>>(hipblasOperation_t    transA,
                                     std::complex<double>* C,
                                     int64_t               ldc)
 {
-    cblas_zgemm(CblasColMajor,
+    API_SUFFIX(cblas_zgemm)(CblasColMajor,
                 (CBLAS_TRANSPOSE)transA,
                 (CBLAS_TRANSPOSE)transB,
                 m,
@@ -3068,7 +3068,7 @@ void ref_gemm<int8_t, int32_t, int32_t>(hipblasOperation_t transA,
         C_double[i] = static_cast<double>(C[i]);
     }
 
-    cblas_dgemm(CblasColMajor,
+    API_SUFFIX(cblas_dgemm)(CblasColMajor,
                 static_cast<CBLAS_TRANSPOSE>(transA),
                 static_cast<CBLAS_TRANSPOSE>(transB),
                 m,
@@ -3102,7 +3102,7 @@ void ref_hemm(hipblasSideMode_t    side,
               std::complex<float>* C,
               int64_t              ldc)
 {
-    cblas_chemm(CblasColMajor,
+    API_SUFFIX(cblas_chemm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 m,
@@ -3131,7 +3131,7 @@ void ref_hemm(hipblasSideMode_t     side,
               std::complex<double>* C,
               int64_t               ldc)
 {
-    cblas_zhemm(CblasColMajor,
+    API_SUFFIX(cblas_zhemm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 m,
@@ -3159,7 +3159,7 @@ void ref_herk(hipblasFillMode_t    uplo,
               std::complex<float>* C,
               int64_t              ldc)
 {
-    cblas_cherk(CblasColMajor,
+    API_SUFFIX(cblas_cherk)(CblasColMajor,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
                 n,
@@ -3184,7 +3184,7 @@ void ref_herk(hipblasFillMode_t     uplo,
               std::complex<double>* C,
               int64_t               ldc)
 {
-    cblas_zherk(CblasColMajor,
+    API_SUFFIX(cblas_zherk)(CblasColMajor,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
                 n,
@@ -3330,7 +3330,7 @@ void ref_her2k(hipblasFillMode_t    uplo,
                std::complex<float>* C,
                int64_t              ldc)
 {
-    cblas_cher2k(CblasColMajor,
+    API_SUFFIX(cblas_cher2k)(CblasColMajor,
                  (CBLAS_UPLO)uplo,
                  (CBLAS_TRANSPOSE)transA,
                  n,
@@ -3359,7 +3359,7 @@ void ref_her2k(hipblasFillMode_t     uplo,
                std::complex<double>* C,
                int64_t               ldc)
 {
-    cblas_zher2k(CblasColMajor,
+    API_SUFFIX(cblas_zher2k)(CblasColMajor,
                  (CBLAS_UPLO)uplo,
                  (CBLAS_TRANSPOSE)transA,
                  n,
@@ -3389,7 +3389,7 @@ void ref_symm(hipblasSideMode_t side,
               float*            C,
               int64_t           ldc)
 {
-    cblas_ssymm(CblasColMajor,
+    API_SUFFIX(cblas_ssymm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 m,
@@ -3418,7 +3418,7 @@ void ref_symm(hipblasSideMode_t side,
               double*           C,
               int64_t           ldc)
 {
-    cblas_dsymm(CblasColMajor,
+    API_SUFFIX(cblas_dsymm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 m,
@@ -3447,7 +3447,7 @@ void ref_symm(hipblasSideMode_t    side,
               std::complex<float>* C,
               int64_t              ldc)
 {
-    cblas_csymm(CblasColMajor,
+    API_SUFFIX(cblas_csymm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 m,
@@ -3476,7 +3476,7 @@ void ref_symm(hipblasSideMode_t     side,
               std::complex<double>* C,
               int64_t               ldc)
 {
-    cblas_zsymm(CblasColMajor,
+    API_SUFFIX(cblas_zsymm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 m,
@@ -3504,7 +3504,7 @@ void ref_syrk(hipblasFillMode_t  uplo,
               float*             C,
               int64_t            ldc)
 {
-    cblas_ssyrk(CblasColMajor,
+    API_SUFFIX(cblas_ssyrk)(CblasColMajor,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
                 n,
@@ -3529,7 +3529,7 @@ void ref_syrk(hipblasFillMode_t  uplo,
               double*            C,
               int64_t            ldc)
 {
-    cblas_dsyrk(CblasColMajor,
+    API_SUFFIX(cblas_dsyrk)(CblasColMajor,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
                 n,
@@ -3554,7 +3554,7 @@ void ref_syrk(hipblasFillMode_t    uplo,
               std::complex<float>* C,
               int64_t              ldc)
 {
-    cblas_csyrk(CblasColMajor,
+    API_SUFFIX(cblas_csyrk)(CblasColMajor,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
                 n,
@@ -3579,7 +3579,7 @@ void ref_syrk(hipblasFillMode_t     uplo,
               std::complex<double>* C,
               int64_t               ldc)
 {
-    cblas_zsyrk(CblasColMajor,
+    API_SUFFIX(cblas_zsyrk)(CblasColMajor,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
                 n,
@@ -3607,7 +3607,7 @@ void ref_syr2k(hipblasFillMode_t  uplo,
                float*             C,
                int64_t            ldc)
 {
-    cblas_ssyr2k(CblasColMajor,
+    API_SUFFIX(cblas_ssyr2k)(CblasColMajor,
                  (CBLAS_UPLO)uplo,
                  (CBLAS_TRANSPOSE)transA,
                  n,
@@ -3636,7 +3636,7 @@ void ref_syr2k(hipblasFillMode_t  uplo,
                double*            C,
                int64_t            ldc)
 {
-    cblas_dsyr2k(CblasColMajor,
+    API_SUFFIX(cblas_dsyr2k)(CblasColMajor,
                  (CBLAS_UPLO)uplo,
                  (CBLAS_TRANSPOSE)transA,
                  n,
@@ -3665,7 +3665,7 @@ void ref_syr2k(hipblasFillMode_t    uplo,
                std::complex<float>* C,
                int64_t              ldc)
 {
-    cblas_csyr2k(CblasColMajor,
+    API_SUFFIX(cblas_csyr2k)(CblasColMajor,
                  (CBLAS_UPLO)uplo,
                  (CBLAS_TRANSPOSE)transA,
                  n,
@@ -3694,7 +3694,7 @@ void ref_syr2k(hipblasFillMode_t     uplo,
                std::complex<double>* C,
                int64_t               ldc)
 {
-    cblas_zsyr2k(CblasColMajor,
+    API_SUFFIX(cblas_zsyr2k)(CblasColMajor,
                  (CBLAS_UPLO)uplo,
                  (CBLAS_TRANSPOSE)transA,
                  n,
@@ -3728,7 +3728,7 @@ void ref_trsm<float>(hipblasSideMode_t  side,
                      int64_t            ldb)
 {
     // just directly cast, since transA, transB are integers in the enum
-    cblas_strsm(CblasColMajor,
+    API_SUFFIX(cblas_strsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -3756,7 +3756,7 @@ void ref_trsm<double>(hipblasSideMode_t  side,
                       int64_t            ldb)
 {
     // just directly cast, since transA, transB are integers in the enum
-    cblas_dtrsm(CblasColMajor,
+    API_SUFFIX(cblas_dtrsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -3783,7 +3783,7 @@ void ref_trsm<std::complex<float>>(hipblasSideMode_t     side,
                               std::complex<float>*       B,
                               int64_t               ldb)
 {
-    cblas_ctrsm(CblasColMajor,
+    API_SUFFIX(cblas_ctrsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -3810,7 +3810,7 @@ void ref_trsm<std::complex<double>>(hipblasSideMode_t           side,
                                     std::complex<double>*       B,
                                     int64_t                     ldb)
 {
-    cblas_ztrsm(CblasColMajor,
+    API_SUFFIX(cblas_ztrsm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -3868,7 +3868,7 @@ void ref_trmm<float>(hipblasSideMode_t  side,
                      int64_t            ldb)
 {
     // just directly cast, since transA, transB are integers in the enum
-    cblas_strmm(CblasColMajor,
+    API_SUFFIX(cblas_strmm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -3896,7 +3896,7 @@ void ref_trmm<double>(hipblasSideMode_t  side,
                       int64_t            ldb)
 {
     // just directly cast, since transA, transB are integers in the enum
-    cblas_dtrmm(CblasColMajor,
+    API_SUFFIX(cblas_dtrmm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -3923,7 +3923,7 @@ void ref_trmm<std::complex<float>>(hipblasSideMode_t          side,
                                    std::complex<float>*       B,
                                    int64_t                    ldb)
 {
-    cblas_ctrmm(CblasColMajor,
+    API_SUFFIX(cblas_ctrmm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
@@ -3950,7 +3950,7 @@ void ref_trmm<std::complex<double>>(hipblasSideMode_t           side,
                                     std::complex<double>*       B,
                                     int64_t                     ldb)
 {
-    cblas_ztrmm(CblasColMajor,
+    API_SUFFIX(cblas_ztrmm)(CblasColMajor,
                 (CBLAS_SIDE)side,
                 (CBLAS_UPLO)uplo,
                 (CBLAS_TRANSPOSE)transA,
