@@ -390,6 +390,182 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
     __syncthreads();
 }
 
+template <int RDIM, typename T, typename I, typename INFO, typename U>
+ROCSOLVER_KERNEL void potf2_reg_kernel_small(const bool is_upper,
+                                             const I n,
+                                             U AA,
+                                             const rocblas_stride shiftA,
+                                             const I lda,
+                                             const rocblas_stride strideA,
+                                             INFO* const info)
+{
+    using S = decltype(std::real(T{}));
+    bool const is_lower = (!is_upper);
+
+    auto const i_start = hipThreadIdx_x;
+    auto const i_inc = hipBlockDim_x;
+    auto const j_start = hipThreadIdx_y;
+    auto const j_inc = hipBlockDim_y;
+    assert(i_inc == j_inc);
+    assert(hipBlockDim_z == 1);
+
+    // --------------------------------
+    // note hipGridDim_z == batch_count
+    // --------------------------------
+    auto const bid = hipBlockIdx_z;
+    assert(AA != nullptr);
+    assert(info != nullptr);
+
+    T* const A = load_ptr_batch(AA, bid, shiftA, strideA);
+    INFO* const info_bid = info + bid;
+
+    assert(A != nullptr);
+
+    // -----------------------------------------
+    // assume n by n matrix will fit in LDS cache
+    // -----------------------------------------
+    extern __shared__ rocblas_int lsmem[];
+    T* diag = reinterpret_cast<T*>(lsmem);
+    T* vect = diag + 1;
+
+    // --------------------------------------------------------
+    // factoring Lower triangular matrix may be slightly faster
+    // due to simpler index calculation down a column
+    // --------------------------------------------------------
+    bool const use_compute_lower = true;
+
+    // Register array to store A
+    T Areg[RDIM][RDIM] = {0};
+
+    // ------------------------------------
+    // copy n by n packed matrix into registers
+    // ------------------------------------
+    __syncthreads();
+
+    for(I rj = 0; rj < RDIM; rj++)
+    {
+        for(I ri = rj; ri < RDIM; ri++)
+        {
+            auto const i = (i_start + ri * i_inc);
+            auto const j = (j_start + rj * j_inc);
+            auto const ij = i + j * static_cast<int64_t>(lda);
+
+            if(i < n && j < n)
+                Areg[rj][ri] = A[ij];
+        }
+    }
+
+    if(is_lower)
+    {
+        // ---------------------------------------------------
+        // [  l11     ]  * [ l11'   vl21' ]  =  [ a11       ]
+        // [ vl21  L22]    [        L22' ]     [ va21, A22 ]
+        //
+        //
+        //   assume l11 is scalar 1x1 matrix
+        //
+        //   (1) l11 * l11' = a11 =>  l11 = sqrt( abs(a11) ), scalar computation
+        //   (2) vl21 * l11' = va21 =>  vl21 = va21/ l11', scale vector
+        //   (3) L22 * L22' + vl21 * vl21' = A22
+        //
+        //   (3a) A22 = A22 - vl21 * vl21',  symmetric rank-1 update
+        //   (3b) L22 * L22' = A22,   cholesky factorization, tail recursion
+        // ---------------------------------------------------
+
+        for(I kcol = 0; kcol < n; kcol++)
+        {
+            if(i_start == j_start && kcol % i_inc == i_start)
+            {
+                auto const akk = std::real(Areg[kcol / i_inc][kcol / i_inc]);
+                bool const isok = (akk > 0) && (std::isfinite(akk));
+                if(isok)
+                {
+                    diag[0] = Areg[kcol / i_inc][kcol / i_inc] = std::sqrt(akk);
+                }
+                else
+                {
+                    diag[0] = Areg[kcol / i_inc][kcol / i_inc] = akk;
+                    // Fortran 1-based index
+                    if(*info_bid == 0)
+                        *info_bid = kcol + 1;
+                }
+            }
+
+            __syncthreads();
+            auto const lkk = std::real(diag[0]);
+            if(!(lkk > 0) || !(std::isfinite(lkk)))
+            {
+                break;
+            }
+
+            // ------------------------------------------------------------
+            //   (2) vl21 * l11' = va21 =>  vl21 = va21/ l11', scale vector
+            // ------------------------------------------------------------
+
+            auto const conj_lkk = conj(lkk);
+            if(kcol % j_inc == j_start)
+            {
+                auto const rj = kcol / j_inc;
+                auto const j = (j_start + rj * j_inc);
+                for(I ri = (kcol + 1) / i_inc; ri < RDIM; ri++)
+                {
+                    auto const i = (i_start + ri * i_inc);
+                    if(i > kcol && i < n)
+                    {
+                        Areg[rj][ri] /= conj_lkk;
+                        vect[i] = Areg[rj][ri];
+                    }
+                }
+            }
+
+            __syncthreads();
+
+            // ------------------------------------------------------------
+            //   (3a) A22 = A22 - vl21 * vl21',  symmetric rank-1 update
+            //
+            //   note: update lower triangular part
+            // ------------------------------------------------------------
+
+            for(I rj = (kcol + 1) / j_inc; rj < RDIM; rj++)
+            {
+                auto const j = (j_start + rj * j_inc);
+                auto const vj = (j < n) ? vect[j] : 0;
+                for(I ri = rj; ri < RDIM; ri++)
+                {
+                    auto const i = (i_start + ri * i_inc);
+                    auto const vi = (i < n) ? vect[i] : 0;
+
+                    if(i > kcol && j > kcol)
+                        Areg[rj][ri] -= vi * conj(vj);
+                }
+            }
+
+            __syncthreads();
+
+        } // end for kcol
+    }
+
+    // -------------------------------------
+    // copy n by n packed matrix into global memory
+    // -------------------------------------
+    for(I rj = 0; rj < RDIM; rj++)
+    {
+        for(I ri = rj; ri < RDIM; ri++)
+        {
+            auto const i = (i_start + ri * i_inc);
+            auto const j = (j_start + rj * j_inc);
+            auto const ij = i + j * static_cast<int64_t>(lda);
+
+            if(i < n && j < n)
+            {
+                A[ij] = Areg[rj][ri];
+            }
+        }
+    }
+
+    __syncthreads();
+}
+
 /*************************************************************
     Launchers of specilized kernels
 *************************************************************/
@@ -411,12 +587,25 @@ rocblas_status potf2_run_small(rocblas_handle handle,
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
-    size_t lmemsize = sizeof(T) * (n * (n + 1)) / 2;
+    size_t lmemsize = sizeof(T) * n;
 
     bool const is_upper = (uplo == rocblas_fill_upper);
-    ROCSOLVER_LAUNCH_KERNEL((potf2_kernel_small<T, I, INFO, U>), dim3(1, 1, batch_count),
-                            dim3(BS2, BS2, 1), lmemsize, stream, is_upper, n, A, shiftA, lda,
-                            strideA, info);
+    if(n <= BS2)
+        ROCSOLVER_LAUNCH_KERNEL((potf2_reg_kernel_small<1, T, I, INFO, U>), dim3(1, 1, batch_count),
+                                dim3(BS2, BS2, 1), lmemsize, stream, is_upper, n, A, shiftA, lda,
+                                strideA, info);
+    else if(n <= 2 * BS2)
+        ROCSOLVER_LAUNCH_KERNEL((potf2_reg_kernel_small<2, T, I, INFO, U>), dim3(1, 1, batch_count),
+                                dim3(BS2, BS2, 1), lmemsize, stream, is_upper, n, A, shiftA, lda,
+                                strideA, info);
+    else if(n <= 4 * BS2)
+        ROCSOLVER_LAUNCH_KERNEL((potf2_reg_kernel_small<4, T, I, INFO, U>), dim3(1, 1, batch_count),
+                                dim3(BS2, BS2, 1), lmemsize, stream, is_upper, n, A, shiftA, lda,
+                                strideA, info);
+    else if(n <= 8 * BS2)
+        ROCSOLVER_LAUNCH_KERNEL((potf2_reg_kernel_small<8, T, I, INFO, U>), dim3(1, 1, batch_count),
+                                dim3(BS2, BS2, 1), lmemsize, stream, is_upper, n, A, shiftA, lda,
+                                strideA, info);
 
     return rocblas_status_success;
 }
