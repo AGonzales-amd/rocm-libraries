@@ -443,6 +443,244 @@ __device__ static void potf2_panel_mfma(bool const is_upper, I const n, T* const
         } // end for kcol
     }
 }
+
+#define MAX_TILES 10
+template <typename T, typename I, typename INFO, typename U>
+ROCSOLVER_KERNEL void potf2_register_kernel_small(const bool is_upper,
+                                                  const I n,
+                                                  U AA,
+                                                  const rocblas_stride shiftA,
+                                                  const I lda,
+                                                  const rocblas_stride strideA,
+                                                  INFO* const info)
+{
+    using T4 = typename mfma_16x16x4<T>::AccT;
+
+    bool const is_lower = (!is_upper);
+
+    auto const tid = hipThreadIdx_y * hipBlockDim_x + hipThreadIdx_x;
+    auto const inc = hipBlockDim_y * hipBlockDim_x;
+    auto const tidx = hipThreadIdx_x;
+    auto const tidy = hipThreadIdx_y;
+
+    // assume square tile
+    auto const nwarpsx = hipBlockDim_x / WarpSize;
+    auto const nwarpsy = hipBlockDim_y;
+    assert(nwarpsx == nwarpsy);
+
+    auto const widx = tidx / WarpSize;
+    auto const widy = tidy;
+
+    auto const lid = tid % WarpSize;
+    assert(hipBlockDim_z == 1);
+
+    const I cmajor_i_16x4 = lid % 16;
+    const I cmajor_j_16x4 = lid / 16;
+
+    // get batch index
+    auto const bid = hipBlockIdx_z;
+    assert(AA != nullptr);
+    assert(info != nullptr);
+
+    T* const A = load_ptr_batch(AA, bid, shiftA, strideA);
+    INFO* const info_bid = info + bid;
+
+    extern __shared__ rocblas_int lsmem[];
+    T* Ash = reinterpret_cast<T*>(lsmem);
+
+    auto const tile_size = nwarpsx * 16;
+    I const nb = (n + tile_size - 1) / tile_size;
+    auto const ldash = nb * tile_size;
+
+    auto const ngemms = tile_size / 4;
+
+    bool failed = false;
+
+    // load A to registers
+    T4 Arg[MAX_TILES] = {{0}};
+    for(I j = 0; j < nb; j++)
+    {
+        for(I i = j; i < nb; i++)
+        {
+            for(I reg = 0; reg < 4; ++reg)
+            {
+                const auto c_row = i * tile_size + widx * 16
+                    + get_c_row<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+                const auto c_col = j * tile_size + widy * 16
+                    + get_c_col<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+
+                if(c_col < n && c_row < n && c_row >= c_col)
+                {
+                    const auto idx = c_col * lda + c_row;
+                    Arg[idx_lower(i, j, nb)][reg] = A[idx];
+                }
+            }
+        }
+    }
+
+    // Panel Cholesky decomposition
+    for(I j = 0; j < nb; j++)
+    {
+        // load panel to lds
+        for(I i = j; i < nb; i++)
+        {
+            for(I reg = 0; reg < 4; ++reg)
+            {
+                const auto c_row = (i - j) * tile_size + widx * 16
+                    + get_c_row<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+                const auto c_col
+                    = widy * 16 + get_c_col<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+
+                const auto idx = c_col * ldash + c_row;
+                Ash[idx] = Arg[idx_lower(i, j, nb)][reg];
+            }
+        }
+
+        __syncthreads();
+
+        I nn = n - j * tile_size;
+
+        // factorize panel
+        for(I kcol = 0; kcol < tile_size; kcol++)
+        {
+            if(kcol >= nn)
+                break;
+
+            auto kk = kcol * ldash + kcol;
+            auto const akk = std::real(Ash[kk]);
+            bool const isok = (akk > 0) && (std::isfinite(akk));
+            if(!isok)
+            {
+                if(tid == 0)
+                {
+                    Ash[kk] = akk;
+                    // Fortran 1-based index
+                    if(*info_bid == 0)
+                        *info_bid = j * tile_size + kcol + 1;
+                }
+                failed = true;
+                break;
+            }
+
+            auto const lkk = std::sqrt(akk);
+            if(tid == 0)
+            {
+                Ash[kk] = lkk;
+            }
+
+            __syncthreads();
+
+            // ------------------------------------------------------------
+            //   (2) vl21 * l11' = va21 =>  vl21 = va21/ l11', scale vector
+            // ------------------------------------------------------------
+
+            auto const conj_lkk = conj(lkk);
+            for(I j0 = (kcol + 1) + tid; j0 < nn; j0 += inc)
+            {
+                auto const j0k = j0 + kcol * ldash;
+
+                Ash[j0k] = (Ash[j0k] / conj_lkk);
+            }
+
+            __syncthreads();
+
+            // ------------------------------------------------------------
+            //   (3a) A22 = A22 - vl21 * vl21',  symmetric rank-1 update
+            //
+            //   note: update lower triangular part
+            // ------------------------------------------------------------
+
+            for(I j = (kcol + 1) + tidy; j < tile_size; j += hipBlockDim_y)
+            {
+                auto const vj = Ash[j + kcol * ldash];
+                for(I i = (kcol + 1) + tidx; i < nn; i += hipBlockDim_x)
+                {
+                    auto const vi = Ash[i + kcol * ldash];
+                    auto const ij = i + j * ldash;
+
+                    Ash[ij] = Ash[ij] - vi * conj(vj);
+                }
+            }
+            __syncthreads();
+        }
+
+        __syncthreads();
+
+        // update trailing matrix
+        for(I k = j + 1; k < nb; k++)
+        {
+            for(I i = k; i < nb; i++)
+            {
+                for(I wk = 0; wk < ngemms; wk++)
+                {
+                    const auto cj = (k - j) * tile_size + widy * 16 + cmajor_i_16x4;
+                    const auto ci = (i - j) * tile_size + widx * 16 + cmajor_i_16x4;
+
+                    auto const ak = cmajor_j_16x4 + wk * 4;
+                    auto const vj = conj(Ash[cj + ak * ldash]);
+                    auto const vi = -Ash[ci + ak * ldash];
+                    Arg[idx_lower(i, k, nb)] = mfma_16x16x4<T>()(vi, vj, Arg[idx_lower(i, k, nb)]);
+                }
+                // if(tid == 0)
+                //     printf("updating trailing...\n");
+                // for(I reg = 0; reg < 4; ++reg)
+                // {
+                //     const auto c_row
+                //         = (i - j) * tile_size + widx * 16 + get_c_row<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+                //     const auto c_col
+                //         = (k - j) * tile_size + widy * 16 + get_c_col<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+
+                //     for(I p = 0; p < tile_size; p++)
+                //     {
+                //         Arg[idx_lower(i, k, nb)][reg] -= Ash[c_row + p * ldash] * conj(Ash[c_col + p * ldash]);
+                //     }
+                // }
+            }
+        }
+
+        __syncthreads();
+
+        // write panel back to registers
+        for(I i = j; i < nb; i++)
+        {
+            for(I reg = 0; reg < 4; ++reg)
+            {
+                const auto c_row = (i - j) * tile_size + widx * 16
+                    + get_c_row<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+                const auto c_col
+                    = widy * 16 + get_c_col<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+
+                const auto idx = c_col * ldash + c_row;
+                Arg[idx_lower(i, j, nb)][reg] = Ash[idx];
+            }
+        }
+
+        if(failed)
+            break;
+    }
+
+    // write A from registers
+    for(I j = 0; j < nb; j++)
+    {
+        for(I i = j; i < nb; i++)
+        {
+            for(I reg = 0; reg < 4; ++reg)
+            {
+                const auto c_row = i * tile_size + widx * 16
+                    + get_c_row<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+                const auto c_col = j * tile_size + widy * 16
+                    + get_c_col<T>(cmajor_j_16x4, cmajor_i_16x4, reg, (I)0, (I)0);
+
+                if(c_col < n && c_row < n && c_row >= c_col)
+                {
+                    const auto idx = c_col * lda + c_row;
+                    A[idx] = Arg[idx_lower(i, j, nb)][reg];
+                }
+            }
+        }
+    }
+}
+#undef MAX_TILES
 #endif // ROCSOLVER_MFMA_ENABLED
 
 /*************************************************************
@@ -593,18 +831,23 @@ rocblas_status potf2_run_small(rocblas_handle handle,
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
-    size_t lmemsize = sizeof(T) * (n * (n + 1)) / 2;
+    const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
 
     bool const is_upper = (uplo == rocblas_fill_upper);
-    bool const use_mfma = rocsolver_has_mfma(handle) && n > POTF2_PANEL_SWITCH_SIZE(T);
+    bool const use_mfma = rocsolver_has_mfma(handle) && n && !is_upper;
     if(use_mfma)
     {
-        ROCSOLVER_LAUNCH_KERNEL((potf2_kernel_small<true, T, I, INFO, U>), dim3(1, 1, batch_count),
-                                dim3(POTF2_PANEL_THREAD_DIMX(T), POTF2_PANEL_THREAD_DIMY(T), 1),
-                                lmemsize, stream, is_upper, n, A, shiftA, lda, strideA, info);
+        auto const tile_size = 256 / 64 * 16;
+        I const nb = (n + tile_size - 1) / tile_size;
+        auto const ldash = nb * tile_size;
+        size_t lmemsize = sizeof(T) * tile_size * ldash;
+        ROCSOLVER_LAUNCH_KERNEL((potf2_register_kernel_small<T, I, INFO, U>),
+                                dim3(1, 1, batch_count), dim3(256, 4, 1), lmemsize, stream,
+                                is_upper, n, A, shiftA, lda, strideA, info);
     }
     else
     {
+        size_t lmemsize = sizeof(T) * (n * (n + 1)) / 2;
         ROCSOLVER_LAUNCH_KERNEL((potf2_kernel_small<false, T, I, INFO, U>), dim3(1, 1, batch_count),
                                 dim3(BS2, BS2, 1), lmemsize, stream, is_upper, n, A, shiftA, lda,
                                 strideA, info);
