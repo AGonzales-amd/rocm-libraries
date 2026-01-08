@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2024-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -146,6 +146,305 @@ __device__ inline I get_c_row(I li, I lj, I gpri, I inc_C, I ldc)
     return gpri * 4 + li;
 }
 
+struct warp_gemm
+{
+    static constexpr auto M = 16;
+    static constexpr auto N = 16;
+    static constexpr auto K = 4;
+
+    template <typename T>
+    using accumulator = typename mfma_16x16x4<T>::AccT;
+
+    struct handle
+    {
+        __device__ handle(int tid)
+            : lid(tid % warpSize)
+            , cmajor_i_16x4(lid % M)
+            , cmajor_j_16x4(lid / M)
+            , cmajor_i_4x16(lid % K)
+            , cmajor_j_4x16(lid / K)
+            , c2r_src(cmajor_i_16x4 * 4 + cmajor_j_16x4)
+            , r2c_src(cmajor_i_4x16 * 16 + cmajor_j_4x16)
+        {
+        }
+
+        __device__ handle()
+            : handle(hipThreadIdx_x + hipThreadIdx_y * hipBlockDim_x
+                     + hipThreadIdx_z * (hipBlockDim_x * hipBlockDim_y))
+        {
+        }
+
+        const int lid;
+
+        // addresses to index elements in registers
+        const int cmajor_i_16x4;
+        const int cmajor_j_16x4;
+        const int cmajor_i_4x16;
+        const int cmajor_j_4x16;
+
+        // addresses to transpose B from col-major to row-major
+        // and transpose C from row-major to col-major
+        const int c2r_src;
+        const int r2c_src;
+    };
+
+    template <typename T, typename I>
+    static __device__ T load_a(const handle& h,
+                               const rocblas_operation transA,
+                               const I m,
+                               const I k,
+                               const T* A,
+                               const I inc,
+                               const I lda)
+    {
+        // load A
+        T amk = 0;
+        if(transA == rocblas_operation_none)
+        {
+            // read col major 16x4 A
+            if(h.cmajor_i_16x4 < m && h.cmajor_j_16x4 < k)
+                amk = A[h.cmajor_j_16x4 * lda + h.cmajor_i_16x4 * inc];
+        }
+        else
+        {
+            // read col major 4x16 op(A)
+            if(h.cmajor_j_4x16 < m && h.cmajor_i_4x16 < k)
+                amk = A[h.cmajor_j_4x16 * lda + h.cmajor_i_4x16 * inc];
+
+            // transpose op(A) to 16x4
+            amk = shfl(amk, h.c2r_src);
+
+            if constexpr(rocblas_is_complex<T>)
+            {
+                if(transA == rocblas_operation_conjugate_transpose)
+                    amk = conj(amk);
+            }
+        }
+
+        return amk;
+    }
+
+    template <typename T, typename I>
+    static __device__ T load_b(const handle& h,
+                               const rocblas_operation transB,
+                               const I n,
+                               const I k,
+                               const T* B,
+                               const I inc,
+                               const I ldb)
+    {
+        T bkn = 0;
+
+        // load B
+        if(transB == rocblas_operation_none)
+        {
+            // read col major 4x16 B
+            if(h.cmajor_j_4x16 < n && h.cmajor_i_4x16 < k)
+                bkn = B[h.cmajor_j_4x16 * ldb + h.cmajor_i_4x16 * inc];
+
+            // transpose B to row major
+            bkn = shfl(bkn, h.c2r_src);
+        }
+        else
+        {
+            // read col major 16x4 op(B)
+            if(h.cmajor_i_16x4 < n && h.cmajor_j_16x4 < k)
+                bkn = B[h.cmajor_j_16x4 * ldb + h.cmajor_i_16x4 * inc];
+
+            if constexpr(rocblas_is_complex<T>)
+            {
+                if(transB == rocblas_operation_conjugate_transpose)
+                    bkn = conj(bkn);
+            }
+        }
+
+        return bkn;
+    }
+
+    template <typename T, typename I, typename T4 = typename mfma_16x16x4<T>::AccT>
+    static __device__ T4 load_c(const handle& h,
+                                const rocblas_operation transC,
+                                const I m,
+                                const I n,
+                                const T* C,
+                                const I inc,
+                                const I ldc)
+    {
+        T4 dmn = {0};
+
+        if(transC == rocblas_operation_none)
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                if(c_col < n && c_row < m)
+                    dmn[i] = C[idx];
+
+                // transpose C to row major
+                dmn[i] = shfl(dmn[i], h.c2r_src);
+            }
+        }
+        else
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                if(c_col < n && c_row < m)
+                    dmn[i] = C[idx];
+            }
+        }
+
+        return dmn;
+    }
+
+    template <typename T, typename I, typename T4 = typename mfma_16x16x4<T>::AccT>
+    static __device__ void write_c(const handle& h,
+                                   const rocblas_operation transC,
+                                   const I m,
+                                   const I n,
+                                   T* C,
+                                   const I inc,
+                                   const I ldc,
+                                   T4& dmn)
+    {
+        if(transC == rocblas_operation_none)
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                // transpose C to col major
+                dmn[i] = shfl(dmn[i], h.r2c_src);
+
+                if(c_col < n && c_row < m)
+                    C[idx] = dmn[i];
+            }
+        }
+        else
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                if(c_col < n && c_row < m)
+                    C[idx] = dmn[i];
+            }
+        }
+    }
+
+    template <typename T, typename I, typename T4 = typename mfma_16x16x4<T>::AccT>
+    static __device__ void write_c(const handle& h,
+                                   const rocblas_operation transC,
+                                   const I m,
+                                   const I n,
+                                   T alpha,
+                                   T beta,
+                                   T* C,
+                                   const I inc,
+                                   const I ldc,
+                                   T4& dmn)
+    {
+        if(transC == rocblas_operation_none)
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                // transpose C to col major
+                dmn[i] = shfl(dmn[i], h.r2c_src);
+
+                if(c_col < n && c_row < m)
+                    C[idx] = alpha * dmn[i] + beta * C[idx];
+            }
+        }
+        else
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                if(c_col < n && c_row < m)
+                    C[idx] = alpha * dmn[i] + beta * C[idx];
+            }
+        }
+    }
+
+    template <typename T, typename I, typename T4 = typename mfma_16x16x4<T>::AccT>
+    static __device__ void write_c_tri(const handle& h,
+                                       const rocblas_operation transC,
+                                       const rocblas_fill uploC,
+                                       const I m,
+                                       const I n,
+                                       T* C,
+                                       const I inc,
+                                       const I ldc,
+                                       T4& dmn)
+    {
+        bool const is_upper = (uploC == rocblas_fill_upper);
+        if(transC == rocblas_operation_none)
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_4x16, (I)h.cmajor_j_4x16, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                // transpose C to col major
+                dmn[i] = shfl(dmn[i], h.r2c_src);
+
+                if(c_col < n && c_row < m)
+                {
+                    if((is_upper && c_col >= c_row) || (!is_upper && c_col <= c_row))
+                        C[idx] = dmn[i];
+                }
+            }
+        }
+        else
+        {
+#pragma unroll
+            for(I i = 0; i < K; ++i)
+            {
+                const I c_col = get_c_col<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I c_row = get_c_row<T>((I)h.cmajor_i_16x4, (I)h.cmajor_j_16x4, i, inc, ldc);
+                const I idx = (c_col * ldc) + (c_row * inc);
+
+                if(c_col < n && c_row < m)
+                {
+                    if((is_upper && c_col >= c_row) || (!is_upper && c_col <= c_row))
+                        C[idx] = dmn[i];
+                }
+            }
+        }
+    }
+
+    template <typename T, typename... Args>
+    static __device__ auto run(Args&&... args)
+    {
+        return mfma_16x16x4<T>(std::forward<Args>(args)...);
+    }
+};
+
 /** GEMM device function to compute C = alpha * A * B + beta * C.
 
     Where C is an m x n matrix, A is an m x p matrix, and B is an
@@ -194,27 +493,10 @@ __device__ void gemm_16x16xp(rocblas_operation transA,
                              I inc_C,
                              I ldc)
 {
-    using T4 = typename mfma_16x16x4<T>::AccT;
+    const auto handle = warp_gemm::handle();
+    auto dmn = warp_gemm::accumulator<T>{0};
 
-    const I lid = threadIdx.x % warpSize;
-
-    const I cmajor_i_16x4 = lid % 16;
-    const I cmajor_j_16x4 = lid / 16;
-
-    const I cmajor_i_4x16 = lid % 4;
-    const I cmajor_j_4x16 = lid / 4;
-
-    const I rmajor_i_4x16 = cmajor_j_16x4;
-    const I rmajor_j_4x16 = cmajor_i_16x4;
-
-    // addresses to transpose B from col-major to row-major
-    // and transpose C from row-major to col-major
-    const auto c2r_src = rmajor_j_4x16 * 4 + rmajor_i_4x16;
-    const auto r2c_src = cmajor_i_4x16 * 16 + cmajor_j_4x16;
-
-    T4 dmn = {0};
-
-    for(I kb = 0; kb < p; kb += 4)
+    for(I kb = 0; kb < p; kb += warp_gemm::K)
     {
         // read A and B in col-major
         T amk = 0;
@@ -222,62 +504,20 @@ __device__ void gemm_16x16xp(rocblas_operation transA,
 
         // load A
         if(transA == rocblas_operation_none)
-        {
-            // read col major 16x4 A
-            if(cmajor_i_16x4 < m && (kb + cmajor_j_16x4) < p)
-                amk = A[(kb + cmajor_j_16x4) * lda + cmajor_i_16x4 * inc_A];
-        }
+            amk = warp_gemm::load_a(handle, transA, m, p - kb, A + (kb * lda), inc_A, lda);
         else
-        {
-            // read col major 4x16 op(A)
-            if(cmajor_j_4x16 < m && (kb + cmajor_i_4x16) < p)
-                amk = A[cmajor_j_4x16 * lda + (kb + cmajor_i_4x16) * inc_A];
-
-            // transpose op(A) to 16x4
-            amk = shfl(amk, c2r_src);
-        }
+            amk = warp_gemm::load_a(handle, transA, m, p - kb, A + (kb * inc_A), inc_A, lda);
 
         // load B
         if(transB == rocblas_operation_none)
-        {
-            // read col major 4x16 B
-            if(cmajor_j_4x16 < n && (kb + cmajor_i_4x16) < p)
-                bkn = B[cmajor_j_4x16 * ldb + (kb + cmajor_i_4x16) * inc_B];
-
-            // transpose B to row major
-            bkn = shfl(bkn, c2r_src);
-        }
+            bkn = warp_gemm::load_b(handle, transB, n, p - kb, B + (kb * inc_B), inc_B, ldb);
         else
-        {
-            // read col major 16x4 op(B)
-            if(cmajor_i_16x4 < n && (kb + cmajor_j_16x4) < p)
-                bkn = B[(kb + cmajor_j_16x4) * ldb + cmajor_i_16x4 * inc_B];
-        }
+            bkn = warp_gemm::load_b(handle, transB, n, p - kb, B + (kb * ldb), inc_B, ldb);
 
-        if constexpr(rocblas_is_complex<T>)
-        {
-            if(transA == rocblas_operation_conjugate_transpose)
-                amk = conj(amk);
-            if(transB == rocblas_operation_conjugate_transpose)
-                bkn = conj(bkn);
-        }
-
-        dmn = mfma_16x16x4<T>()(amk, bkn, dmn);
+        dmn = warp_gemm::run<T>()(amk, bkn, dmn);
     }
 
-#pragma unroll
-    for(I i = 0; i < 4; ++i)
-    {
-        const I c_col = get_c_col<T>(cmajor_i_4x16, cmajor_j_4x16, i, inc_C, ldc);
-        const I c_row = get_c_row<T>(cmajor_i_4x16, cmajor_j_4x16, i, inc_C, ldc);
-        const I idx = (c_col * ldc) + (c_row * inc_C);
-
-        // transpose C to col major
-        dmn[i] = shfl(dmn[i], r2c_src);
-
-        if(c_col < n && c_row < m)
-            C[idx] = alpha * dmn[i] + beta * C[idx];
-    }
+    warp_gemm::write_c(handle, rocblas_operation_none, m, n, alpha, beta, C, inc_C, ldc, dmn);
 }
 
 #endif // ROCSOLVER_MFMA_ENABLED

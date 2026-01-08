@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2024-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,7 @@
 #pragma once
 
 #include "rocblas.hpp"
+#include "roclapack_gemm_device_functions.hpp"
 #include "rocsolver_run_specialized_kernels.hpp"
 #include <algorithm>
 #include <cmath>
@@ -390,6 +391,224 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
     __syncthreads();
 }
 
+#if ROCSOLVER_MFMA_ENABLED
+template <int NB, int PANEL_SIZE, typename T, typename I, typename INFO, typename U>
+ROCSOLVER_KERNEL void potf2_register_kernel_small(const bool is_upper,
+                                                  const I n,
+                                                  U AA,
+                                                  const rocblas_stride shiftA,
+                                                  const I lda,
+                                                  const rocblas_stride strideA,
+                                                  INFO* const info)
+{
+    bool const is_lower = (!is_upper);
+
+    auto const tid = hipThreadIdx_y * hipBlockDim_x + hipThreadIdx_x;
+    auto const inc = hipBlockDim_y * hipBlockDim_x;
+    auto const tidx = hipThreadIdx_x;
+    auto const tidy = hipThreadIdx_y;
+
+    auto const widx = tidx / warpSize;
+    const auto& widy = tidy;
+
+    assert(hipBlockDim_z == 1);
+
+    // get batch index
+    auto const bid = hipBlockIdx_z;
+    assert(AA != nullptr);
+    assert(info != nullptr);
+
+    T* const A = load_ptr_batch(AA, bid, shiftA, strideA);
+    INFO* const info_bid = info + bid;
+
+    extern __shared__ rocblas_int lsmem[];
+    T* Ash = reinterpret_cast<T*>(lsmem);
+    I constexpr ldash = NB * PANEL_SIZE;
+
+    const auto handle = warp_gemm::handle(tid);
+
+    bool failed = false;
+
+    // load A to registers
+    warp_gemm::accumulator<T> Arg[(NB * (NB + 1)) / 2] = {{0}};
+
+    I arg_idx = 0;
+    for(I j = 0; j < NB; j++)
+    {
+        for(I i = j; i < NB; i++)
+        {
+            const I wcol = j * PANEL_SIZE + widy * warp_gemm::N;
+            const I wrow = i * PANEL_SIZE + widx * warp_gemm::M;
+
+            if((wcol < n) & (wrow < n) & (wrow >= wcol))
+            {
+                const I idx = wcol * lda + wrow;
+                Arg[arg_idx] = warp_gemm::load_c(handle, rocblas_operation_none, n - wrow, n - wcol,
+                                                 &A[idx], (I)1, lda);
+            }
+
+            arg_idx++;
+        }
+    }
+
+    // Panel Cholesky decomposition
+    arg_idx = 0;
+    for(I j = 0; j < NB; j++)
+    {
+        // load panel to lds
+        for(I i = 0; i < NB - j; i++)
+        {
+            const I wcol = widy * warp_gemm::N;
+            const I wrow = i * PANEL_SIZE + widx * warp_gemm::M;
+            const I idx = wcol * ldash + wrow;
+            // Ash[idx] = Arg[arg_idx + i];
+
+            warp_gemm::write_c(handle, rocblas_operation_none, (I)warp_gemm::M, (I)warp_gemm::N,
+                               &Ash[idx], (I)1, ldash, Arg[arg_idx + i]);
+        }
+
+        __syncthreads();
+
+        I nn = n - j * PANEL_SIZE;
+
+        // factorize panel
+        for(I kcol = 0; kcol < PANEL_SIZE; kcol++)
+        {
+            if(kcol >= nn)
+                break;
+
+            auto kk = kcol * ldash + kcol;
+            auto const akk = std::real(Ash[kk]);
+            bool const isok = (akk > 0) && (std::isfinite(akk));
+
+            __syncthreads();
+
+            if(!isok)
+            {
+                if(tid == 0)
+                {
+                    Ash[kk] = akk;
+                    // Fortran 1-based index
+                    if(*info_bid == 0)
+                        *info_bid = j * PANEL_SIZE + kcol + 1;
+                }
+                failed = true;
+                __syncthreads();
+                break;
+            }
+
+            auto const lkk = std::sqrt(akk);
+            if(tid == 0)
+            {
+                Ash[kk] = lkk;
+            }
+
+            // ------------------------------------------------------------
+            //   (2) vl21 * l11' = va21 =>  vl21 = va21/ l11', scale vector
+            // ------------------------------------------------------------
+
+            auto const conj_lkk = conj(lkk);
+            for(I j0 = (kcol + 1) + tid; j0 < nn; j0 += inc)
+            {
+                auto const j0k = j0 + kcol * ldash;
+
+                Ash[j0k] = (Ash[j0k] / conj_lkk);
+            }
+
+            __syncthreads();
+
+            // ------------------------------------------------------------
+            //   (3a) A22 = A22 - vl21 * vl21',  symmetric rank-1 update
+            //
+            //   note: update lower triangular part
+            // ------------------------------------------------------------
+
+            for(I j = (kcol + 1) + tidy; j < PANEL_SIZE; j += hipBlockDim_y)
+            {
+                auto const vj = Ash[j + kcol * ldash];
+                for(I i = j + tidx; i < nn; i += hipBlockDim_x)
+                {
+                    auto const vi = Ash[i + kcol * ldash];
+                    auto const ij = i + j * ldash;
+
+                    Ash[ij] = Ash[ij] - vi * conj(vj);
+                }
+            }
+            __syncthreads();
+        }
+
+        // update trailing matrix
+        I karg_idx = arg_idx + NB - j;
+        for(I k = j + 1; k < NB; k++)
+        {
+            for(I i = k; i < NB; i++)
+            {
+                // const I wcol = j * PANEL_SIZE + widy * warp_gemm::N;
+                // const I wrow = i * PANEL_SIZE + widx * warp_gemm::M;
+                const auto wcol = (k - j) * PANEL_SIZE + widy * warp_gemm::N;
+                const auto wrow = (i - j) * PANEL_SIZE + widx * warp_gemm::M;
+
+                for(I p = 0; p < PANEL_SIZE; p += warp_gemm::K)
+                {
+                    // Arg[karg_idx + i - k] -= Ash[row + p * ldash] * conj(Ash[col + p * ldash]);
+
+                    auto amk
+                        = -warp_gemm::load_a(handle, rocblas_operation_none, (I)warp_gemm::M,
+                                             (I)warp_gemm::K, &Ash[wrow + p * ldash], (I)1, ldash);
+                    auto bkn = warp_gemm::load_b(handle, rocblas_operation_conjugate_transpose,
+                                                 (I)warp_gemm::N, (I)warp_gemm::K,
+                                                 &Ash[wcol + p * ldash], (I)1, ldash);
+
+                    Arg[karg_idx + i - k] = warp_gemm::run<T>()(amk, bkn, Arg[karg_idx + i - k]);
+                }
+            }
+            karg_idx += NB - k;
+        }
+
+        // write panel back to registers
+        for(I i = 0; i < NB - j; i++)
+        {
+            const I wcol = widy * warp_gemm::N;
+            const I wrow = i * PANEL_SIZE + widx * warp_gemm::M;
+            const I idx = wcol * ldash + wrow;
+            // Arg[arg_idx + i] = Ash[idx];
+
+            Arg[arg_idx + i] = warp_gemm::load_c(handle, rocblas_operation_none, (I)warp_gemm::M,
+                                                 (I)warp_gemm::N, &Ash[idx], (I)1, ldash);
+        }
+        arg_idx += NB - j;
+
+        __syncthreads();
+
+        if(failed)
+            break;
+    }
+
+    // write A from registers
+    arg_idx = 0;
+    for(I j = 0; j < NB; j++)
+    {
+        for(I i = j; i < NB; i++)
+        {
+            const I wcol = j * PANEL_SIZE + widy * warp_gemm::N;
+            const I wrow = i * PANEL_SIZE + widx * warp_gemm::M;
+
+            if((wcol < n) & (wrow < n) & (wrow >= wcol))
+            {
+                const I idx = wcol * lda + wrow;
+                if(wrow == wcol)
+                    warp_gemm::write_c_tri(handle, rocblas_operation_none, rocblas_fill_lower,
+                                           n - wrow, n - wcol, &A[idx], (I)1, lda, Arg[arg_idx]);
+                else
+                    warp_gemm::write_c(handle, rocblas_operation_none, n - wrow, n - wcol, &A[idx],
+                                       (I)1, lda, Arg[arg_idx]);
+            }
+
+            arg_idx++;
+        }
+    }
+}
+#else
 template <int NB, int PANEL_SIZE, typename T, typename I, typename INFO, typename U>
 ROCSOLVER_KERNEL void potf2_register_kernel_small(const bool is_upper,
                                                   const I n,
@@ -574,6 +793,7 @@ ROCSOLVER_KERNEL void potf2_register_kernel_small(const bool is_upper,
         }
     }
 }
+#endif // ROCSOLVER_MFMA_ENABLED
 
 /*************************************************************
     Launchers of specilized kernels
@@ -596,21 +816,33 @@ rocblas_status potf2_run_small(rocblas_handle handle,
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
-    const auto nb = (n + BS2 - 1) / BS2;
+    const auto nb = (n + 64 - 1) / 64;
 
-    size_t lmemsize = sizeof(T) * nb * BS2 * BS2;
+    size_t lmemsize = sizeof(T) * nb * 64 * 64;
 
     bool const is_upper = (uplo == rocblas_fill_upper);
-    auto kernel = std::array{potf2_register_kernel_small<1, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<2, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<3, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<4, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<5, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<6, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<7, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<8, BS2, T, I, INFO, U>};
-    ROCSOLVER_LAUNCH_KERNEL(kernel[nb - 1], dim3(1, 1, batch_count), dim3(BS2, BS2, 1), lmemsize,
+    auto kernel = std::array{potf2_register_kernel_small<1, 64, T, I, INFO, U>,
+                             potf2_register_kernel_small<2, 64, T, I, INFO, U>,
+                             potf2_register_kernel_small<3, 64, T, I, INFO, U>,
+                             potf2_register_kernel_small<4, 64, T, I, INFO, U>};
+    ROCSOLVER_LAUNCH_KERNEL(kernel[nb - 1], dim3(1, 1, batch_count), dim3(256, 4, 1), lmemsize,
                             stream, is_upper, n, A, shiftA, lda, strideA, info);
+
+    // const auto nb = (n + BS2 - 1) / BS2;
+
+    // size_t lmemsize = sizeof(T) * nb * BS2 * BS2;
+
+    // bool const is_upper = (uplo == rocblas_fill_upper);
+    // auto kernel = std::array{potf2_register_kernel_small<1, BS2, T, I, INFO, U>,
+    //                          potf2_register_kernel_small<2, BS2, T, I, INFO, U>,
+    //                          potf2_register_kernel_small<3, BS2, T, I, INFO, U>,
+    //                          potf2_register_kernel_small<4, BS2, T, I, INFO, U>,
+    //                          potf2_register_kernel_small<5, BS2, T, I, INFO, U>,
+    //                          potf2_register_kernel_small<6, BS2, T, I, INFO, U>,
+    //                          potf2_register_kernel_small<7, BS2, T, I, INFO, U>,
+    //                          potf2_register_kernel_small<8, BS2, T, I, INFO, U>};
+    // ROCSOLVER_LAUNCH_KERNEL(kernel[nb - 1], dim3(1, 1, batch_count), dim3(BS2, BS2, 1), lmemsize,
+    //                         stream, is_upper, n, A, shiftA, lda, strideA, info);
 
     return rocblas_status_success;
 }
