@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2024-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -391,16 +391,195 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
 }
 
 template <int NB, int PANEL_SIZE, typename T, typename I, typename INFO, typename U>
-ROCSOLVER_KERNEL void potf2_register_kernel_small(const bool is_upper,
-                                                  const I n,
-                                                  U AA,
-                                                  const rocblas_stride shiftA,
-                                                  const I lda,
-                                                  const rocblas_stride strideA,
-                                                  INFO* const info)
+ROCSOLVER_KERNEL void potf2_register_kernel_upper_small(const I n,
+                                                        U AA,
+                                                        const rocblas_stride shiftA,
+                                                        const I lda,
+                                                        const rocblas_stride strideA,
+                                                        INFO* const info)
 {
-    bool const is_lower = (!is_upper);
+    auto const tid = hipThreadIdx_y * hipBlockDim_x + hipThreadIdx_x;
+    auto const inc = hipBlockDim_y * hipBlockDim_x;
+    auto const tidx = hipThreadIdx_x;
+    auto const tidy = hipThreadIdx_y;
 
+    assert(hipBlockDim_z == 1);
+
+    // get batch index
+    auto const bid = hipBlockIdx_z;
+    assert(AA != nullptr);
+    assert(info != nullptr);
+
+    T* const A = load_ptr_batch(AA, bid, shiftA, strideA);
+    INFO* const info_bid = info + bid;
+
+    extern __shared__ rocblas_int lsmem[];
+    T* Ash = reinterpret_cast<T*>(lsmem);
+    auto constexpr ldash = NB * PANEL_SIZE;
+
+    bool failed = false;
+
+    // load A to registers
+    T Arg[(NB * (NB + 1)) / 2] = {0};
+
+    I arg_idx = 0;
+    for(I j = 0; j < NB; j++)
+    {
+        for(I i = j; i < NB; i++)
+        {
+            const auto col = i * PANEL_SIZE + tidy;
+            const auto row = j * PANEL_SIZE + tidx;
+            if(col < n && row < n && row <= col)
+            {
+                const auto idx = col * lda + row;
+                Arg[arg_idx] = A[idx];
+            }
+
+            arg_idx++;
+        }
+    }
+
+    // Panel Cholesky decomposition
+    arg_idx = 0;
+    for(I j = 0; j < NB; j++)
+    {
+        // load panel to lds
+        for(I i = 0; i < NB - j; i++)
+        {
+            const auto col = i * PANEL_SIZE + tidy;
+            const auto idx = tidx * ldash + col;
+            Ash[idx] = Arg[arg_idx + i];
+        }
+
+        __syncthreads();
+
+        I nn = n - j * PANEL_SIZE;
+
+        // factorize panel
+        for(I kcol = 0; kcol < PANEL_SIZE; kcol++)
+        {
+            if(kcol >= nn)
+                break;
+
+            auto kk = kcol * ldash + kcol;
+            auto const akk = std::real(Ash[kk]);
+            bool const isok = (akk > 0) && (std::isfinite(akk));
+
+            __syncthreads();
+
+            if(!isok)
+            {
+                if(tid == 0)
+                {
+                    Ash[kk] = akk;
+                    // Fortran 1-based index
+                    if(*info_bid == 0)
+                        *info_bid = j * PANEL_SIZE + kcol + 1;
+                }
+                failed = true;
+                __syncthreads();
+                break;
+            }
+
+            auto const lkk = std::sqrt(akk);
+            if(tid == 0)
+            {
+                Ash[kk] = lkk;
+            }
+
+            // ------------------------------------------------------------
+            //   (2) vl21 * l11' = va21 =>  vl21 = va21/ l11', scale vector
+            // ------------------------------------------------------------
+
+            auto const conj_lkk = conj(lkk);
+            for(I j0 = (kcol + 1) + tid; j0 < nn; j0 += inc)
+            {
+                auto const j0k = j0 + kcol * ldash;
+
+                Ash[j0k] = (Ash[j0k] / conj_lkk);
+            }
+
+            __syncthreads();
+
+            // ------------------------------------------------------------
+            //   (3a) A22 = A22 - vl21 * vl21',  symmetric rank-1 update
+            //
+            //   note: update lower triangular part
+            // ------------------------------------------------------------
+
+            for(I j = (kcol + 1) + tidy; j < PANEL_SIZE; j += hipBlockDim_y)
+            {
+                auto const vj = Ash[j + kcol * ldash];
+                for(I i = j + tidx; i < nn; i += hipBlockDim_x)
+                {
+                    auto const vi = Ash[i + kcol * ldash];
+                    auto const ij = i + j * ldash;
+
+                    Ash[ij] = Ash[ij] - vi * conj(vj);
+                }
+            }
+            __syncthreads();
+        }
+
+        // update trailing matrix
+        I karg_idx = arg_idx + NB - j;
+        for(I k = j + 1; k < NB; k++)
+        {
+            for(I i = k; i < NB; i++)
+            {
+                const auto col = (i - j) * PANEL_SIZE + tidy;
+                const auto row = (k - j) * PANEL_SIZE + tidx;
+
+                for(I p = 0; p < PANEL_SIZE; p++)
+                {
+                    Arg[karg_idx + i - k] -= conj(Ash[row + p * ldash]) * Ash[col + p * ldash];
+                }
+            }
+            karg_idx += NB - k;
+        }
+
+        // write panel back to registers
+        for(I i = 0; i < NB - j; i++)
+        {
+            const auto col = i * PANEL_SIZE + tidy;
+            const auto idx = tidx * ldash + col;
+            Arg[arg_idx + i] = Ash[idx];
+        }
+        arg_idx += NB - j;
+
+        __syncthreads();
+
+        if(failed)
+            break;
+    }
+
+    // write A from registers
+    arg_idx = 0;
+    for(I j = 0; j < NB; j++)
+    {
+        for(I i = j; i < NB; i++)
+        {
+            const auto col = i * PANEL_SIZE + tidy;
+            const auto row = j * PANEL_SIZE + tidx;
+            if(col < n && row < n && row <= col)
+            {
+                const auto idx = col * lda + row;
+                A[idx] = Arg[arg_idx];
+            }
+
+            arg_idx++;
+        }
+    }
+}
+
+template <int NB, int PANEL_SIZE, typename T, typename I, typename INFO, typename U>
+ROCSOLVER_KERNEL void potf2_register_kernel_lower_small(const I n,
+                                                        U AA,
+                                                        const rocblas_stride shiftA,
+                                                        const I lda,
+                                                        const rocblas_stride strideA,
+                                                        INFO* const info)
+{
     auto const tid = hipThreadIdx_y * hipBlockDim_x + hipThreadIdx_x;
     auto const inc = hipBlockDim_y * hipBlockDim_x;
     auto const tidx = hipThreadIdx_x;
@@ -601,16 +780,25 @@ rocblas_status potf2_run_small(rocblas_handle handle,
     size_t lmemsize = sizeof(T) * nb * BS2 * BS2;
 
     bool const is_upper = (uplo == rocblas_fill_upper);
-    auto kernel = std::array{potf2_register_kernel_small<1, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<2, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<3, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<4, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<5, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<6, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<7, BS2, T, I, INFO, U>,
-                             potf2_register_kernel_small<8, BS2, T, I, INFO, U>};
-    ROCSOLVER_LAUNCH_KERNEL(kernel[nb - 1], dim3(1, 1, batch_count), dim3(BS2, BS2, 1), lmemsize,
-                            stream, is_upper, n, A, shiftA, lda, strideA, info);
+    auto lower_kernel = std::array{potf2_register_kernel_lower_small<1, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_lower_small<2, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_lower_small<3, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_lower_small<4, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_lower_small<5, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_lower_small<6, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_lower_small<7, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_lower_small<8, BS2, T, I, INFO, U>};
+    auto upper_kernel = std::array{potf2_register_kernel_upper_small<1, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_upper_small<2, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_upper_small<3, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_upper_small<4, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_upper_small<5, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_upper_small<6, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_upper_small<7, BS2, T, I, INFO, U>,
+                                   potf2_register_kernel_upper_small<8, BS2, T, I, INFO, U>};
+    ROCSOLVER_LAUNCH_KERNEL((is_upper ? upper_kernel[nb - 1] : lower_kernel[nb - 1]),
+                            dim3(1, 1, batch_count), dim3(BS2, BS2, 1), lmemsize, stream, n, A,
+                            shiftA, lda, strideA, info);
 
     return rocblas_status_success;
 }
