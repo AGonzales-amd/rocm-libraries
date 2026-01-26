@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -186,8 +186,8 @@ rocblas_status rocsolver_potrf_template(rocblas_handle handle,
     // algorithm
     I nb = POTRF_BLOCKSIZE(T);
     if(n <= POTRF_POTF2_SWITCHSIZE(T))
-        return rocsolver_potf2_template<T>(handle, uplo, n, A, shiftA, lda, strideA, info,
-                                           batch_count, scalars, (T*)work1, pivots);
+        return rocsolver_potf2_template<BATCHED, T>(handle, uplo, n, A, shiftA, lda, strideA, info,
+                                                    batch_count, scalars, (T*)work1, pivots);
 
     // constants for rocblas functions calls
     T t_one = 1;
@@ -208,8 +208,9 @@ rocblas_status rocsolver_potrf_template(rocblas_handle handle,
             // Factor diagonal and subdiagonal blocks
             jb = std::min(n - j, nb); // number of columns in the block
             ROCSOLVER_LAUNCH_KERNEL(reset_info, gridReset, threads, 0, stream, iinfo, batch_count, 0);
-            rocsolver_potf2_template<T>(handle, uplo, jb, A, shiftA + idx2D(j, j, lda), lda,
-                                        strideA, iinfo, batch_count, scalars, (T*)work1, pivots);
+            rocsolver_potf2_template<BATCHED, T>(handle, uplo, jb, A, shiftA + idx2D(j, j, lda),
+                                                 lda, strideA, iinfo, batch_count, scalars,
+                                                 (T*)work1, pivots);
 
             // test for non-positive-definiteness.
             ROCSOLVER_LAUNCH_KERNEL((chk_positive<I, INFO, U>), gridReset, threads, 0, stream,
@@ -240,8 +241,9 @@ rocblas_status rocsolver_potrf_template(rocblas_handle handle,
             // Factor diagonal and subdiagonal blocks
             jb = std::min(n - j, nb); // number of columns in the block
             ROCSOLVER_LAUNCH_KERNEL(reset_info, gridReset, threads, 0, stream, iinfo, batch_count, 0);
-            rocsolver_potf2_template<T>(handle, uplo, jb, A, shiftA + idx2D(j, j, lda), lda,
-                                        strideA, iinfo, batch_count, scalars, (T*)work1, pivots);
+            rocsolver_potf2_template<BATCHED, T>(handle, uplo, jb, A, shiftA + idx2D(j, j, lda),
+                                                 lda, strideA, iinfo, batch_count, scalars,
+                                                 (T*)work1, pivots);
 
             // test for non-positive-definiteness.
             ROCSOLVER_LAUNCH_KERNEL((chk_positive<I, INFO, U>), gridReset, threads, 0, stream,
@@ -268,8 +270,8 @@ rocblas_status rocsolver_potrf_template(rocblas_handle handle,
     // factor last block
     if(j < n)
     {
-        rocsolver_potf2_template<T>(handle, uplo, n - j, A, shiftA + idx2D(j, j, lda), lda, strideA,
-                                    iinfo, batch_count, scalars, (T*)work1, pivots);
+        rocsolver_potf2_template<BATCHED, T>(handle, uplo, n - j, A, shiftA + idx2D(j, j, lda), lda,
+                                             strideA, iinfo, batch_count, scalars, (T*)work1, pivots);
         ROCSOLVER_LAUNCH_KERNEL((chk_positive<I, INFO, U>), gridReset, threads, 0, stream, iinfo,
                                 info, j, batch_count);
     }

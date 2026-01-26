@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -80,8 +80,8 @@ rocblas_status rocsolver_potf2_impl(rocblas_handle handle,
         init_scalars(handle, (T*)scalars);
 
     // execution
-    return rocsolver_potf2_template<T>(handle, uplo, n, A, shiftA, lda, strideA, info, batch_count,
-                                       (T*)scalars, (T*)work, (T*)pivots);
+    return rocsolver_potf2_template<false, T>(handle, uplo, n, A, shiftA, lda, strideA, info,
+                                              batch_count, (T*)scalars, (T*)work, (T*)pivots);
 }
 
 ROCSOLVER_END_NAMESPACE

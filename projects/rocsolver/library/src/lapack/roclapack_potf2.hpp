@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -166,7 +166,7 @@ rocblas_status rocsolver_potf2_potrf_argCheck(rocblas_handle handle,
     return rocblas_status_continue;
 }
 
-template <typename T, typename I, typename INFO, typename U, bool COMPLEX = rocblas_is_complex<T>>
+template <bool BATCHED, typename T, typename I, typename INFO, typename U, bool COMPLEX = rocblas_is_complex<T>>
 rocblas_status rocsolver_potf2_template(rocblas_handle handle,
                                         const rocblas_fill uplo,
                                         const I n,
@@ -180,6 +180,8 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
                                         T* work,
                                         T* pivots)
 {
+    using S = decltype(std::real(T{}));
+
     ROCSOLVER_ENTER("potf2", "uplo:", uplo, "n:", n, "shiftA:", shiftA, "lda:", lda,
                     "bc:", batch_count);
 
@@ -206,7 +208,7 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
     rocblas_get_pointer_mode(handle, &old_mode);
     rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device);
 
-    if(n <= POTRF_BLOCKSIZE(T))
+    if(n <= POTF2_MAX_SMALL_SIZE(T))
     {
         // ----------------------
         // use specialized kernel
@@ -219,10 +221,12 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
         // to prevent GEMV and SCAL to modify further the input matrix; ideally with
         // no synchronizations.)
 
+        const auto nn = n - POTF2_MAX_SMALL_SIZE(T);
+
         if(uplo == rocblas_fill_upper)
         {
             // Compute the Cholesky factorization A = U'*U.
-            for(I j = 0; j < n; ++j)
+            for(I j = 0; j < nn; ++j)
             {
                 // Compute U(J,J) and test for non-positive-definiteness.
                 rocblasCall_dot<COMPLEX, T>(handle, j, A, shiftA + idx2D(0, j, lda), 1, strideA, A,
@@ -257,7 +261,7 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
         else
         {
             // Compute the Cholesky factorization A = L'*L.
-            for(I j = 0; j < n; ++j)
+            for(I j = 0; j < nn; ++j)
             {
                 // Compute L(J,J) and test for non-positive-definiteness.
                 rocblasCall_dot<COMPLEX, T>(handle, j, A, shiftA + idx2D(j, 0, lda), lda, strideA,
@@ -289,6 +293,28 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
                 }
             }
         }
+
+        // ---------------------------------------------------------
+        // use specialized kernel to factor the remaining sub matrix
+        // ---------------------------------------------------------
+
+        // update trailing sub matrix from complete rows/columns
+        if(uplo == rocblas_fill_upper)
+            rocblasCall_syrk_herk<BATCHED, T>(
+                handle, uplo, rocblas_operation_conjugate_transpose, (I)POTF2_MAX_SMALL_SIZE(T), nn,
+                reinterpret_cast<S*>(scalars), A, shiftA + idx2D(0, nn, lda), lda, strideA,
+                reinterpret_cast<S*>(scalars + 2), A, shiftA + idx2D(nn, nn, lda), lda, strideA,
+                batch_count);
+        else
+            rocblasCall_syrk_herk<BATCHED, T>(
+                handle, uplo, rocblas_operation_none, (I)POTF2_MAX_SMALL_SIZE(T), nn,
+                reinterpret_cast<S*>(scalars), A, shiftA + idx2D(nn, 0, lda), lda, strideA,
+                reinterpret_cast<S*>(scalars + 2), A, shiftA + idx2D(nn, nn, lda), lda, strideA,
+                batch_count);
+
+        // factor trailing submatrix
+        potf2_run_small<T>(handle, uplo, (I)POTF2_MAX_SMALL_SIZE(T), A, shiftA + idx2D(nn, nn, lda),
+                           lda, strideA, info, batch_count);
     }
 
     rocblas_set_pointer_mode(handle, old_mode);
