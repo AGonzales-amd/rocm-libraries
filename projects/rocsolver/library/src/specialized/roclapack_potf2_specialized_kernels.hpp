@@ -76,7 +76,7 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
 
     extern __shared__ rocblas_int lsmem[];
     T* Ash = reinterpret_cast<T*>(lsmem);
-    auto constexpr ldash = NB * PANEL_SIZE;
+    // auto constexpr ldash = NB * PANEL_SIZE;
 
     bool failed = false;
 
@@ -117,26 +117,6 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
     arg_idx = 0;
     for(I kb = 0; kb < NB; kb++)
     {
-        // write panel to lds
-        for(I i = 0; i < NB - kb; i++)
-        {
-            // write to lds as lower and compute as lower
-            if(is_upper)
-            {
-                const auto col = i * PANEL_SIZE + tidy;
-                const auto idx = tidx * ldash + col;
-                Ash[idx] = Arg[arg_idx + i];
-            }
-            else
-            {
-                const auto row = i * PANEL_SIZE + tidx;
-                const auto idx = tidy * ldash + row;
-                Ash[idx] = Arg[arg_idx + i];
-            }
-        }
-
-        __syncthreads();
-
         I nn = n - kb * PANEL_SIZE;
 
         // factorize panel
@@ -145,7 +125,27 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
             if(kcol >= nn)
                 break;
 
-            auto kk = kcol * ldash + kcol;
+            // write column to lds
+            for(I i = 0; i < NB - kb; i++)
+            {
+                // write to lds as lower and compute as lower
+                if(is_upper)
+                {
+                    const auto col = i * PANEL_SIZE + tidy;
+                    if(tidx == kcol)
+                        Ash[col] = Arg[arg_idx + i];
+                }
+                else
+                {
+                    const auto row = i * PANEL_SIZE + tidx;
+                    if(tidy == kcol)
+                        Ash[row] = Arg[arg_idx + i];
+                }
+            }
+
+            __syncthreads();
+
+            auto kk = kcol;
             auto const akk = std::real(Ash[kk]);
             bool const isok = (akk > 0) && (std::isfinite(akk));
 
@@ -178,7 +178,7 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
             auto const conj_lkk = conj(lkk);
             for(I j0 = (kcol + 1) + tid; j0 < nn; j0 += inc)
             {
-                auto const j0k = j0 + kcol * ldash;
+                auto const j0k = j0;
 
                 Ash[j0k] = (Ash[j0k] / conj_lkk);
             }
@@ -190,66 +190,53 @@ ROCSOLVER_KERNEL void potf2_kernel_small(const bool is_upper,
             //
             //   note: update lower triangular part
             // ------------------------------------------------------------
-
-            for(I j = (kcol + 1) + tidy; j < PANEL_SIZE; j += hipBlockDim_y)
+            I upd_arg_idx = arg_idx;
+            for(I j = kb; j < NB; j++)
             {
-                auto const vj = Ash[j + kcol * ldash];
-                for(I i = j + tidx; i < nn; i += hipBlockDim_x)
+                for(I i = j; i < NB; i++)
                 {
-                    auto const vi = Ash[i + kcol * ldash];
-                    auto const ij = i + j * ldash;
+                    if(is_upper)
+                    {
+                        const auto col = (i - kb) * PANEL_SIZE + tidy;
+                        const auto row = (j - kb) * PANEL_SIZE + tidx;
 
-                    Ash[ij] = Ash[ij] - vi * conj(vj);
+                        if(row > kcol)
+                        {
+                            Arg[upd_arg_idx + i - j] -= conj(Ash[row]) * Ash[col];
+                        }
+                    }
+                    else
+                    {
+                        const auto col = (j - kb) * PANEL_SIZE + tidy;
+                        const auto row = (i - kb) * PANEL_SIZE + tidx;
+
+                        if(col > kcol)
+                        {
+                            Arg[upd_arg_idx + i - j] -= Ash[row] * conj(Ash[col]);
+                        }
+                    }
                 }
+                upd_arg_idx += NB - j;
             }
-            __syncthreads();
-        }
 
-        // update trailing matrix
-        I upd_arg_idx = arg_idx + NB - kb;
-        for(I j = kb + 1; j < NB; j++)
-        {
-            for(I i = j; i < NB; i++)
+            // load column back to registers
+            for(I i = 0; i < NB - kb; i++)
             {
                 if(is_upper)
                 {
-                    const auto col = (i - kb) * PANEL_SIZE + tidy;
-                    const auto row = (j - kb) * PANEL_SIZE + tidx;
-
-                    for(I p = 0; p < PANEL_SIZE; p++)
-                    {
-                        Arg[upd_arg_idx + i - j] -= conj(Ash[row + p * ldash]) * Ash[col + p * ldash];
-                    }
+                    const auto col = i * PANEL_SIZE + tidy;
+                    if(tidx == kcol)
+                        Arg[arg_idx + i] = Ash[col];
                 }
                 else
                 {
-                    const auto col = (j - kb) * PANEL_SIZE + tidy;
-                    const auto row = (i - kb) * PANEL_SIZE + tidx;
-
-                    for(I p = 0; p < PANEL_SIZE; p++)
-                    {
-                        Arg[upd_arg_idx + i - j] -= Ash[row + p * ldash] * conj(Ash[col + p * ldash]);
-                    }
+                    const auto row = i * PANEL_SIZE + tidx;
+                    if(tidy == kcol)
+                        Arg[arg_idx + i] = Ash[row];
                 }
             }
-            upd_arg_idx += NB - j;
-        }
 
-        // load panel back to registers
-        for(I i = 0; i < NB - kb; i++)
-        {
-            if(is_upper)
-            {
-                const auto col = i * PANEL_SIZE + tidy;
-                const auto idx = tidx * ldash + col;
-                Arg[arg_idx + i] = Ash[idx];
-            }
-            else
-            {
-                const auto row = i * PANEL_SIZE + tidx;
-                const auto idx = tidy * ldash + row;
-                Arg[arg_idx + i] = Ash[idx];
-            }
+            __syncthreads();
         }
         arg_idx += NB - kb;
 
@@ -314,7 +301,7 @@ rocblas_status potf2_run_small(rocblas_handle handle,
 
     const auto nb = (n + BS2 - 1) / BS2;
 
-    size_t lmemsize = sizeof(T) * nb * BS2 * BS2;
+    size_t lmemsize = sizeof(T) * nb * BS2;
 
     bool const is_upper = (uplo == rocblas_fill_upper);
     auto kernel = std::array{
