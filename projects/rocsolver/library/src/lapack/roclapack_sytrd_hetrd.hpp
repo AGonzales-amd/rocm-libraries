@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2020-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -199,71 +199,42 @@ rocblas_status rocsolver_sytrd_hetrd_template(rocblas_handle handle,
                             n, A, shiftA, lda, strideA, A, shiftA, lda, strideA, no_mask{}, uplo,
                             rocblas_diagonal_unit);
 
-    if(uplo == rocblas_fill_lower)
+    // reduce the upper part of A
+    // main loop running backwards (for each block of columns)
+    // when the unreduced part is not large enough, switch to unblocked algorithm
+    j = n - k;
+    rocblas_int upkk = n - ((n - kk + k - 1) / k) * k;
+    while(j >= upkk)
     {
-        // reduce the lower part of A
-        // main loop running forwards (for each block of columns)
-        // when the unreduced part is not large enough, switch to unblocked algorithm
-        j = 0;
-        while(j < n - kk)
-        {
-            // reduce columns j:j+k-1
-            rocsolver_latrd_forsytrd_template<T>(handle, uplo, n - j, k, A,
-                                                 shiftA + idx2D(j, j, lda), lda, strideA, (E + j),
-                                                 strideE, (tau + j), strideP, tmptau_W, 0, ldw,
-                                                 strideW, batch_count, scalars, work, norms, workArr);
+        // reduce columns j:j+k-1
+        rocsolver_latrd_forsytrd_template<T>(handle, rocblas_fill_upper, j + k, k, A, shiftA, lda,
+                                             strideA, E, strideE, tau, strideP, tmptau_W, 0, ldw,
+                                             strideW, batch_count, scalars, work, norms, workArr);
 
-            // update trailing matrix
-            // A = A - V*W' - W*V'
-            rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_conjugate_transpose,
-                           n - j - k, n - j - k, k, &minone, A, shiftA + idx2D(j + k, j, lda), lda,
-                           strideA, tmptau_W, idx2D(k, 0, ldw), ldw, strideW, &one, A,
-                           shiftA + idx2D(j + k, j + k, lda), lda, strideA, batch_count, workArr);
-            rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_conjugate_transpose,
-                           n - j - k, n - j - k, k, &minone, tmptau_W, idx2D(k, 0, ldw), ldw,
-                           strideW, A, shiftA + idx2D(j + k, j, lda), lda, strideA, &one, A,
-                           shiftA + idx2D(j + k, j + k, lda), lda, strideA, batch_count, workArr);
+        // update trailing matrix
+        // A = A - V*W' - W*V'
+        rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_conjugate_transpose, j, j,
+                       k, &minone, A, shiftA + idx2D(0, j, lda), lda, strideA, tmptau_W, 0, ldw,
+                       strideW, &one, A, shiftA, lda, strideA, batch_count, workArr);
+        rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_conjugate_transpose, j, j,
+                       k, &minone, tmptau_W, 0, ldw, strideW, A, shiftA + idx2D(0, j, lda), lda,
+                       strideA, &one, A, shiftA, lda, strideA, batch_count, workArr);
 
-            j += k;
-        }
-
-        // reduce last columns of A
-        rocsolver_sytd2_hetd2_template<T>(handle, uplo, n - j, A, shiftA + idx2D(j, j, lda), lda,
-                                          strideA, (D + j), strideD, (E + j), strideE, (tau + j),
-                                          strideP, batch_count, scalars, work, norms, tmptau_W,
-                                          workArr);
+        j -= k;
     }
 
-    else
+    // reduce first columns of A
+    rocsolver_sytd2_hetd2_template<T>(handle, rocblas_fill_upper, upkk, A, shiftA, lda, strideA, D,
+                                      strideD, E, strideE, tau, strideP, batch_count, scalars, work,
+                                      norms, tmptau_W, workArr);
+
+    if(uplo == rocblas_fill_lower)
     {
-        // reduce the upper part of A
-        // main loop running backwards (for each block of columns)
-        // when the unreduced part is not large enough, switch to unblocked algorithm
-        j = n - k;
-        rocblas_int upkk = n - ((n - kk + k - 1) / k) * k;
-        while(j >= upkk)
-        {
-            // reduce columns j:j+k-1
-            rocsolver_latrd_forsytrd_template<T>(handle, uplo, j + k, k, A, shiftA, lda, strideA, E,
-                                                 strideE, tau, strideP, tmptau_W, 0, ldw, strideW,
-                                                 batch_count, scalars, work, norms, workArr);
-
-            // update trailing matrix
-            // A = A - V*W' - W*V'
-            rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_conjugate_transpose, j,
-                           j, k, &minone, A, shiftA + idx2D(0, j, lda), lda, strideA, tmptau_W, 0,
-                           ldw, strideW, &one, A, shiftA, lda, strideA, batch_count, workArr);
-            rocsolver_gemm(handle, rocblas_operation_none, rocblas_operation_conjugate_transpose, j,
-                           j, k, &minone, tmptau_W, 0, ldw, strideW, A, shiftA + idx2D(0, j, lda),
-                           lda, strideA, &one, A, shiftA, lda, strideA, batch_count, workArr);
-
-            j -= k;
-        }
-
-        // reduce first columns of A
-        rocsolver_sytd2_hetd2_template<T>(handle, uplo, upkk, A, shiftA, lda, strideA, D, strideD,
-                                          E, strideE, tau, strideP, batch_count, scalars, work,
-                                          norms, tmptau_W, workArr);
+        blocks = (n - 1) / BS2 + 1;
+        ROCSOLVER_LAUNCH_KERNEL((copy_trans_mat<T, T>), dim3(blocks, blocks, batch_count),
+                                dim3(BS2, BS2, 1), 0, stream, rocblas_operation_conjugate_transpose,
+                                n, n, A, shiftA, lda, strideA, A, shiftA, lda, strideA, no_mask{},
+                                rocblas_fill_upper, rocblas_diagonal_unit);
     }
 
     // Copy results (set tridiagonal form in A)
