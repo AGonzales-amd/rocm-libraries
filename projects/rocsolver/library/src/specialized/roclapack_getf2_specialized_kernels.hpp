@@ -243,6 +243,10 @@ ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
     const I id = hipBlockIdx_z;
     const I bdx = hipBlockDim_x;
     const I bdy = hipBlockDim_y;
+    const I tid = tx + ty * bdx;
+    const I lid = tid % warpSize;
+    const I wid = tid / warpSize;
+    const I wx = bdx / warpSize;
 
     // batch instance
     T* A = load_ptr_batch<T>(AA, id, shiftA, strideA);
@@ -255,7 +259,7 @@ ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
     T* x = reinterpret_cast<T*>(lmem);
     T* y = x + bdx;
     S* sval = reinterpret_cast<S*>(y + n);
-    I* sidx = reinterpret_cast<I*>(sval + bdx);
+    I* sidx = reinterpret_cast<I*>(sval + wx);
     __shared__ T val;
 
     // local variables
@@ -271,8 +275,6 @@ ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
         idx1 = tx;
         x[tx] = valtmp;
         val1 = aabs<S>(valtmp);
-        sval[tx] = val1;
-        sidx[tx] = idx1;
     }
 
     // main loop (for each pivot)
@@ -280,20 +282,54 @@ ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
     {
         // find pivot (maximum in column)
         __syncthreads();
-        for(I i = bdx / 2; i > 0; i /= 2)
+
+        if(tid < bdx || tid < warpSize)
         {
-            if(tx < i && ty == 0)
+            for(I i = std::min(bdx, (I)warpSize) / 2; i > 0; i /= 2)
             {
-                val2 = sval[tx + i];
-                idx2 = sidx[tx + i];
+                val2 = shift_left(val1, i);
+                idx2 = shift_left(idx1, i);
                 if((val1 < val2) || (val1 == val2 && idx1 > idx2))
                 {
-                    sval[tx] = val1 = val2;
-                    sidx[tx] = idx1 = idx2;
+                    val1 = val2;
+                    idx1 = idx2;
                 }
             }
+        }
+
+        if(bdx > warpSize)
+        {
+            if(wid < wx && lid == 0)
+            {
+                sval[wid] = val1;
+                sidx[wid] = idx1;
+            }
+
+            __syncthreads();
+
+            if(tid == 0)
+            {
+                for(I i = 1; i < wx; i++)
+                {
+                    val2 = sval[i];
+                    idx2 = sidx[i];
+                    if((val1 < val2) || (val1 == val2 && idx1 > idx2))
+                    {
+                        val1 = val2;
+                        idx1 = idx2;
+                    }
+                }
+            }
+
             __syncthreads();
         }
+
+        if(tid == 0)
+        {
+            sidx[0] = idx1;
+        }
+        __syncthreads();
+
         pivot_idx = sidx[0]; //after reduction this is the index of max value
         pivot_val = x[pivot_idx];
 
@@ -338,8 +374,6 @@ ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
             if(tx == k + 1)
             {
                 x[pivot_idx] = valtmp;
-                val1 = aabs<S>(valtmp);
-                sval[pivot_idx] = val1;
             }
             if(permut_idx && tx == k)
                 swap(permut[k], permut[pivot_idx]);
@@ -362,8 +396,14 @@ ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
                 A[tx + (k + 1) * lda] = valtmp;
                 x[tx] = valtmp;
                 val1 = aabs<S>(valtmp);
-                sval[tx] = val1;
             }
+        }
+
+        __syncthreads();
+
+        if(pivot_idx != k && ty == 0 && tx == pivot_idx)
+        {
+            val1 = aabs<S>(x[pivot_idx]);
         }
 
         // update ipiv and prepare for next step
@@ -371,11 +411,8 @@ ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
         {
             val1 = 0;
             x[tx] = 0;
-            sval[tx] = 0;
         }
         idx1 = tx;
-        if(ty == 0)
-            sidx[tx] = idx1;
     }
 
     // update info
@@ -720,7 +757,10 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
 
     if(pivot)
     {
-        size_t lmemsize = (dimx + n) * sizeof(T) + dimx * (sizeof(I) + sizeof(S));
+        const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
+        const I wx = dimx / props->warpSize;
+
+        size_t lmemsize = (dimx + n) * sizeof(T) + wx * sizeof(I) + std::max(wx, (I)1) * sizeof(S);
         ROCSOLVER_LAUNCH_KERNEL((getf2_panel_kernel<T>), grid, block, lmemsize, stream, m, n, A,
                                 shiftA, lda, strideA, ipiv, shiftP, strideP, info, batch_count,
                                 offset, permut_idx, stride);
