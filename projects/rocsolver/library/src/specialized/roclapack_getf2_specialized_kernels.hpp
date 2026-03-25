@@ -41,9 +41,16 @@ ROCSOLVER_KERNEL void __launch_bounds__(GETF2_SSKER_MAX_M)
 {
     using S = decltype(std::real(T{}));
 
-    I myrow = hipThreadIdx_x;
+    const I tx = hipThreadIdx_x;
     const I ty = hipThreadIdx_y;
+    const I bdx = hipBlockDim_x;
     const I id = hipBlockIdx_y * static_cast<I>(hipBlockDim_y) + ty;
+
+    const I wid = tx / warpSize;
+    const I lid = tx % warpSize;
+    const I wx = bdx / warpSize;
+
+    I myrow = tx;
 
     if(id >= batch_count)
         return;
@@ -58,7 +65,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(GETF2_SSKER_MAX_M)
     // (SHUFFLES DO NOT IMPROVE PERFORMANCE IN THIS CASE)
     extern __shared__ double lmem[];
     T* common = reinterpret_cast<T*>(lmem);
-    common += ty * std::max(m, DIM);
+    I* sidx = reinterpret_cast<I*>(common + wx);
+    // common += ty * std::max(m, DIM);
 
     // local variables
     T pivot_value;
@@ -71,37 +79,97 @@ ROCSOLVER_KERNEL void __launch_bounds__(GETF2_SSKER_MAX_M)
     // read corresponding row from global memory into local array
 #pragma unroll DIM
     for(I j = 0; j < DIM; ++j)
-        rA[j] = A[myrow + j * lda];
+        if(myrow < m)
+            rA[j] = A[myrow + j * lda];
+        else
+            rA[j] = 0;
 
-        // for each pivot (main loop)
+            // for each pivot (main loop)
 #pragma unroll DIM
     for(I k = 0; k < DIM; ++k)
     {
-        // share current column
-        common[myrow] = rA[k];
-        __syncthreads();
+        if(k >= m)
+            break;
+
+        // // share current column
+        // if(myrow < m)
+        //     common[myrow] = rA[k];
+        // __syncthreads();
+
+        // // search pivot index
+        // pivot_index = k;
+        // pivot_value = common[k];
+        // for(I i = k + 1; i < m; ++i)
+        // {
+        //     test_value = common[i];
+        //     if(aabs<S>(pivot_value) < aabs<S>(test_value))
+        //     {
+        //         pivot_value = test_value;
+        //         pivot_index = i;
+        //     }
+        // }
 
         // search pivot index
-        pivot_index = k;
-        pivot_value = common[k];
-        for(I i = k + 1; i < m; ++i)
+        pivot_index = myrow;
+        pivot_value = rA[k];
+
+        // reduce warp
+        for(I i = warpSize / 2; i > 0; i /= 2)
         {
-            test_value = common[i];
-            if(aabs<S>(pivot_value) < aabs<S>(test_value))
+            T val2 = shift_left(pivot_value, i);
+            I idx2 = shift_left(pivot_index, i);
+            if((pivot_index < k)
+               || idx2 >= k && idx2 < m
+                   && ((aabs<S>(pivot_value) < aabs<S>(val2))
+                       || (aabs<S>(pivot_value) == aabs<S>(val2) && pivot_index > idx2)))
             {
-                pivot_value = test_value;
-                pivot_index = i;
+                pivot_value = val2;
+                pivot_index = idx2;
             }
         }
+
+        // reduce workgroup
+        if(bdx > warpSize)
+        {
+            if(lid == 0)
+            {
+                common[wid] = pivot_value;
+                sidx[wid] = pivot_index;
+            }
+
+            __syncthreads();
+
+            if(tx == 0)
+            {
+                for(I i = 1; i < wx; i++)
+                {
+                    T val2 = common[i];
+                    I idx2 = sidx[i];
+                    if((aabs<S>(pivot_value) < aabs<S>(val2))
+                       || (aabs<S>(pivot_value) == aabs<S>(val2) && pivot_index > idx2))
+                    {
+                        pivot_value = val2;
+                        pivot_index = idx2;
+                    }
+                }
+            }
+        }
+
+        if(tx == 0)
+        {
+            sidx[0] = pivot_index;
+            common[0] = pivot_value;
+        }
+        __syncthreads();
+
+        pivot_index = sidx[0];
+        pivot_value = common[0];
 
         // check singularity and scale value for current column
         if(pivot_value != T(0))
             pivot_value = S(1) / pivot_value;
         else if(myinfo == 0)
             myinfo = k + 1;
-
-        // synchronize across waves before overwriting common
-        __syncthreads();
 
         // swap rows (lazy swaping)
         if(myrow == pivot_index)
@@ -131,13 +199,14 @@ ROCSOLVER_KERNEL void __launch_bounds__(GETF2_SSKER_MAX_M)
     }
 
     // write results to global memory
-    if(myrow < DIM)
+    if(myrow < DIM && myrow < m)
         ipiv[myrow] = mypiv + offset;
     if(myrow == 0 && *info == 0 && myinfo > 0)
         *info = myinfo + offset;
+    if(myrow < m)
 #pragma unroll DIM
-    for(I j = 0; j < DIM; ++j)
-        A[myrow + j * lda] = rA[j];
+        for(I j = 0; j < DIM; ++j)
+            A[myrow + j * lda] = rA[j];
 }
 
 /** getf2_npvt_small_kernel (non pivoting version) **/
@@ -572,11 +641,18 @@ rocblas_status getf2_run_small(rocblas_handle handle,
         ROCSOLVER_LAUNCH_KERNEL((getf2_npvt_small_kernel<DIM, T>), grid, block, lmemsize, stream,  \
                                 m, A, shiftA, lda, strideA, info, batch_count, offset)
 
+    const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
+
+    // std::cout << "running small getf2 kernel" << std::endl;
+
     // determine sizes
-    I opval[] = {GETF2_OPTIM_NGRP};
-    I ngrp = (batch_count < 2 || m > 32) ? 1 : opval[m - 1];
+    // I opval[] = {GETF2_OPTIM_NGRP};
+    // I ngrp = (batch_count < 2 || m > 32) ? 1 : opval[m - 1];
+    I ngrp = 1;
     I blocks = (batch_count - 1) / ngrp + 1;
-    I nthds = m;
+    // I nthds = m;
+    I nwarps = (m + props->warpSize - 1) / props->warpSize;
+    I nthds = nwarps * props->warpSize;
     I msize;
     if(pivot)
         msize = std::max(m, n);
