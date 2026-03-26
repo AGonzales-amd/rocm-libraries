@@ -220,6 +220,198 @@ ROCSOLVER_KERNEL void __launch_bounds__(GETF2_SSKER_MAX_M)
 }
 
 /** getf2_panel_kernel takes care of small matrices with m >= n **/
+template <int NB, typename T, typename I, typename INFO, typename U>
+ROCSOLVER_KERNEL void getf2_panel_reg_kernel(const I m,
+                                             const I n,
+                                             U AA,
+                                             const rocblas_stride shiftA,
+                                             const I lda,
+                                             const rocblas_stride strideA,
+                                             I* ipivA,
+                                             const rocblas_stride shiftP,
+                                             const rocblas_stride strideP,
+                                             INFO* infoA,
+                                             const I batch_count,
+                                             const I offset,
+                                             I* permut_idx,
+                                             const rocblas_stride stridePI)
+{
+    using S = decltype(std::real(T{}));
+
+    const I tx = hipThreadIdx_x;
+    const I ty = hipThreadIdx_y;
+    const I id = hipBlockIdx_z;
+    const I bdx = hipBlockDim_x;
+    const I bdy = hipBlockDim_y;
+
+    // const I wx = tx / warpSize;
+    // const I nwx = bdx / warpSize;
+
+    const I dim = std::min(m, n);
+
+    // batch instance
+    T* A = load_ptr_batch<T>(AA, id, shiftA, strideA);
+    I* ipiv = load_ptr_batch<I>(ipivA, id, shiftP, strideP);
+    I* permut = (permut_idx != nullptr ? permut_idx + id * stridePI : nullptr);
+    INFO* info = infoA + id;
+
+    // shared memory (for communication between threads in group)
+    extern __shared__ double lmem[];
+    T* x = reinterpret_cast<T*>(lmem);
+    T* y = x + bdx;
+    S* sval = reinterpret_cast<S*>(y + n);
+    I* sidx = reinterpret_cast<I*>(sval + bdx);
+
+    // local variables
+    S val1, val2;
+    T pivot_val;
+    I idx1, idx2, pivot_idx;
+    INFO myinfo = 0; // to build info
+
+    I myrow = tx;
+
+    I b = 0; // tracks current register block
+
+    // register to hold A
+    T rA[NB] = {0};
+
+    // load A to register
+    for(I i = 0; i < NB; i++)
+    {
+        I col = ty + i * bdy;
+        if(myrow < m && col < n)
+            rA[i] = A[myrow + col * lda];
+    }
+
+    // init step: read column zero from A
+    if(ty == 0)
+    {
+        idx1 = myrow;
+        x[myrow] = rA[0];
+        val1 = aabs<S>(rA[0]);
+        sval[tx] = val1;
+        sidx[tx] = idx1;
+    }
+
+    // main loop (for each pivot)
+    for(I k = 0; k < dim; ++k)
+    {
+        // find pivot (maximum in column)
+        __syncthreads();
+        for(I i = bdx / 2; i > 0; i /= 2)
+        {
+            if(tx < i && (ty + b * bdy) == k)
+            {
+                val2 = sval[tx + i];
+                idx2 = sidx[tx + i];
+                if((val1 < val2) || (val1 == val2 && idx1 > idx2))
+                {
+                    sval[tx] = val1 = val2;
+                    sidx[tx] = idx1 = idx2;
+                }
+            }
+            __syncthreads();
+        }
+        pivot_idx = sidx[0]; //after reduction this is the index of max value
+        pivot_val = x[pivot_idx];
+
+        // check singularity and scale value for current column
+        if(pivot_val == T(0))
+        {
+            pivot_idx = k;
+            if(myinfo == 0)
+                myinfo = k + 1;
+        }
+        else
+            pivot_val = S(1) / pivot_val;
+
+        // update ipiv
+        if(tx == 0 && ty == 0)
+            ipiv[k] = pivot_idx + 1 + offset;
+
+        // update column k
+        if(myrow != pivot_idx)
+        {
+            pivot_val *= x[myrow];
+            if((ty + b * bdy) == k && myrow >= k && myrow < m)
+                rA[b] = pivot_val;
+        }
+
+        // put pivot row in shared mem
+        if(myrow == pivot_idx)
+        {
+            for(I i = 0; i < NB; i++)
+            {
+                I col = ty + i * bdy;
+                if(col < n)
+                    y[col] = rA[i];
+            }
+
+            // move pivot row to row k
+            myrow = k;
+        }
+        else if(myrow == k)
+        {
+            // move row k to pivot row)
+            myrow = pivot_idx;
+        }
+        __syncthreads();
+
+        // update permut
+        if(permut_idx && k != pivot_idx && tx == 0 && ty == 0)
+        {
+            swap(permut[k], permut[pivot_idx]);
+        }
+
+        val1 = 0;
+        idx1 = myrow;
+
+        // rank update
+        if(myrow > k && myrow < m)
+        {
+            for(I i = b; i < NB; i++)
+            {
+                I col = ty + i * bdy;
+                if(col > k && col < n)
+                    rA[i] -= pivot_val * y[col];
+
+                if(col == k + 1)
+                {
+                    x[myrow] = rA[i];
+                    val1 = aabs<S>(rA[i]);
+                    // sval[tx] = val1;
+                }
+            }
+        }
+        else if(ty == 0)
+        {
+            x[myrow] = 0;
+        }
+
+        b = (k + 1) / bdy;
+
+        // update ipiv and prepare for next step
+        if((ty + b * bdy) == k + 1)
+        {
+            sval[tx] = val1;
+            sidx[tx] = idx1;
+        }
+    }
+
+    // write A back to memory
+    for(I i = 0; i < NB; i++)
+    {
+        I col = ty + i * bdy;
+        if(myrow < m && col < n)
+            A[myrow + col * lda] = rA[i];
+    }
+
+    // update info
+    if(tx == 0 && *info == 0 && myinfo > 0 && ty == 0)
+        *info = myinfo + offset;
+}
+
+/** getf2_panel_kernel takes care of small matrices with m >= n **/
 template <typename T, typename I, typename INFO, typename U>
 ROCSOLVER_KERNEL void getf2_panel_kernel(const I m,
                                          const I n,
@@ -721,9 +913,35 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
     if(pivot)
     {
         size_t lmemsize = (dimx + n) * sizeof(T) + dimx * (sizeof(I) + sizeof(S));
-        ROCSOLVER_LAUNCH_KERNEL((getf2_panel_kernel<T>), grid, block, lmemsize, stream, m, n, A,
-                                shiftA, lda, strideA, ipiv, shiftP, strideP, info, batch_count,
-                                offset, permut_idx, stride);
+
+        const I nb = (n + dimy - 1) / dimy;
+
+#define RUN_LUFACT_PANEL_REG(NB_)                                                                  \
+    ROCSOLVER_LAUNCH_KERNEL((getf2_panel_reg_kernel<NB_, T>), grid, block, lmemsize, stream, m, n, \
+                            A, shiftA, lda, strideA, ipiv, shiftP, strideP, info, batch_count,     \
+                            offset, permut_idx, stride);
+
+        if(nb <= 8)
+        {
+            switch(nb)
+            {
+            case 1: RUN_LUFACT_PANEL_REG(1); break;
+            case 2: RUN_LUFACT_PANEL_REG(2); break;
+            case 3: RUN_LUFACT_PANEL_REG(3); break;
+            case 4: RUN_LUFACT_PANEL_REG(4); break;
+            case 5: RUN_LUFACT_PANEL_REG(5); break;
+            case 6: RUN_LUFACT_PANEL_REG(6); break;
+            case 7: RUN_LUFACT_PANEL_REG(7); break;
+            case 8: RUN_LUFACT_PANEL_REG(8); break;
+            default: ROCSOLVER_UNREACHABLE();
+            }
+        }
+        else
+        {
+            ROCSOLVER_LAUNCH_KERNEL((getf2_panel_kernel<T>), grid, block, lmemsize, stream, m, n, A,
+                                    shiftA, lda, strideA, ipiv, shiftP, strideP, info, batch_count,
+                                    offset, permut_idx, stride);
+        }
     }
     else
     {
