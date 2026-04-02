@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2021-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2021-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -313,6 +313,24 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
                                const I offset,
                                I* permut_idx,
                                const rocblas_stride stride);
+
+template <typename T, typename I, typename INFO, typename U>
+rocblas_status getf2_run_panel_reg(rocblas_handle handle,
+                                   const I m,
+                                   const I n,
+                                   U A,
+                                   const rocblas_stride shiftA,
+                                   const I lda,
+                                   const rocblas_stride strideA,
+                                   I* ipiv,
+                                   const rocblas_stride shiftP,
+                                   const rocblas_stride strideP,
+                                   INFO* info,
+                                   const I batch_count,
+                                   const bool pivot,
+                                   const I offset,
+                                   I* permut_idx,
+                                   const rocblas_stride stride);
 
 template <typename T, typename I, typename U>
 void getf2_run_scale_update(rocblas_handle handle,

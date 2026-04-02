@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -208,6 +208,20 @@ inline I getf2_get_checksingularity_blksize(const I n)
 template <bool ISBATCHED, typename T, typename I, std::enable_if_t<!rocblas_is_complex<T>, int> = 0>
 int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 {
+#ifdef ROCSOLVER_TUNE_GETF2_SPKERNEL
+    {
+        static int ker = 0;
+        static const char* str_ker = nullptr;
+
+        if(!str_ker)
+        {
+            str_ker = std::getenv("ROCSOLVER_GETF2_SPKERNEL");
+            ker = atoi(str_ker);
+        }
+
+        return ker;
+    }
+#endif
     int ker = 0;
 
     if(m > GETF2_SPKER_MAX_M || n > GETF2_SPKER_MAX_N || inca != 1)
@@ -302,6 +316,42 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
         ker = 2;
     }
 
+    if(ker == 2)
+    {
+        // determine sizes
+        constexpr I max_threads = ROCSOLVER_ASAN_VALUE(256, 1024);
+        I dimy, dimx;
+        if(m <= 8)
+            dimx = 8;
+        else if(m <= 16)
+            dimx = 16;
+        else if(m <= 32)
+            dimx = 32;
+        else if(m <= 64)
+            dimx = 64;
+        else if(m <= 128)
+            dimx = 128;
+        else if constexpr(!rocsolver_enable_asan)
+        {
+            if(m <= 256)
+                dimx = 256;
+            else if(m <= 512)
+                dimx = 512;
+            else
+                dimx = 1024;
+        }
+        else
+            dimx = 256;
+        dimy = I(max_threads) / dimx;
+
+        const I nb = (n + dimy - 1) / dimy;
+
+        if(nb <= 32)
+        {
+            ker = 3;
+        }
+    }
+
     return ker;
 }
 
@@ -309,6 +359,20 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 template <bool ISBATCHED, typename T, typename I, std::enable_if_t<rocblas_is_complex<T>, int> = 0>
 int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 {
+#ifdef ROCSOLVER_TUNE_GETF2_SPKERNEL
+    {
+        static int ker = 0;
+        static const char* str_ker = nullptr;
+
+        if(!str_ker)
+        {
+            str_ker = std::getenv("ROCSOLVER_GETF2_SPKERNEL");
+            ker = atoi(str_ker);
+        }
+
+        return ker;
+    }
+#endif
     int ker = 0;
 
     if(m > GETF2_SPKER_MAX_M || n > GETF2_SPKER_MAX_N || inca != 1)
@@ -404,6 +468,42 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
     if(ker == 1 && (m > GETF2_SSKER_MAX_M || n > GETF2_SSKER_MAX_N))
     {
         ker = 2;
+    }
+
+    if(ker == 2)
+    {
+        // determine sizes
+        constexpr I max_threads = ROCSOLVER_ASAN_VALUE(256, 1024);
+        I dimy, dimx;
+        if(m <= 8)
+            dimx = 8;
+        else if(m <= 16)
+            dimx = 16;
+        else if(m <= 32)
+            dimx = 32;
+        else if(m <= 64)
+            dimx = 64;
+        else if(m <= 128)
+            dimx = 128;
+        else if constexpr(!rocsolver_enable_asan)
+        {
+            if(m <= 256)
+                dimx = 256;
+            else if(m <= 512)
+                dimx = 512;
+            else
+                dimx = 1024;
+        }
+        else
+            dimx = 256;
+        dimy = I(max_threads) / dimx;
+
+        const I nb = (n + dimy - 1) / dimy;
+
+        if(nb <= 32)
+        {
+            ker = 3;
+        }
     }
 
     return ker;
@@ -617,6 +717,14 @@ rocblas_status rocsolver_getf2_template(rocblas_handle handle,
         {
             return getf2_run_panel<T>(handle, m, n, A, shiftA, lda, strideA, ipiv, shiftP, strideP,
                                       info, batch_count, pivot, offset, permut_idx, stridePI);
+        }
+
+        // use specialized kernels for small skinny matrices (panel factorization)
+        if(spker == 3)
+        {
+            return getf2_run_panel_reg<T>(handle, m, n, A, shiftA, lda, strideA, ipiv, shiftP,
+                                          strideP, info, batch_count, pivot, offset, permut_idx,
+                                          stridePI);
         }
     }
 #endif

@@ -913,6 +913,75 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
     if(pivot)
     {
         size_t lmemsize = (dimx + n) * sizeof(T) + dimx * (sizeof(I) + sizeof(S));
+        ROCSOLVER_LAUNCH_KERNEL((getf2_panel_kernel<T>), grid, block, lmemsize, stream, m, n, A,
+                                shiftA, lda, strideA, ipiv, shiftP, strideP, info, batch_count,
+                                offset, permut_idx, stride);
+    }
+    else
+    {
+        size_t lmemsize = (dimx + n) * sizeof(T);
+        ROCSOLVER_LAUNCH_KERNEL((getf2_npvt_panel_kernel<T>), grid, block, lmemsize, stream, m, n,
+                                A, shiftA, lda, strideA, info, batch_count, offset);
+    }
+
+    return rocblas_status_success;
+}
+
+template <typename T, typename I, typename INFO, typename U>
+rocblas_status getf2_run_panel_reg(rocblas_handle handle,
+                                   const I m,
+                                   const I n,
+                                   U A,
+                                   const rocblas_stride shiftA,
+                                   const I lda,
+                                   const rocblas_stride strideA,
+                                   I* ipiv,
+                                   const rocblas_stride shiftP,
+                                   const rocblas_stride strideP,
+                                   INFO* info,
+                                   const I batch_count,
+                                   const bool pivot,
+                                   const I offset,
+                                   I* permut_idx,
+                                   const rocblas_stride stride)
+{
+    using S = decltype(std::real(T{}));
+
+    // determine sizes
+    constexpr I max_threads = ROCSOLVER_ASAN_VALUE(256, 1024);
+    I dimy, dimx;
+    if(m <= 8)
+        dimx = 8;
+    else if(m <= 16)
+        dimx = 16;
+    else if(m <= 32)
+        dimx = 32;
+    else if(m <= 64)
+        dimx = 64;
+    else if(m <= 128)
+        dimx = 128;
+    else if constexpr(!rocsolver_enable_asan)
+    {
+        if(m <= 256)
+            dimx = 256;
+        else if(m <= 512)
+            dimx = 512;
+        else
+            dimx = 1024;
+    }
+    else
+        dimx = 256;
+    dimy = I(max_threads) / dimx;
+
+    // prepare kernel launch
+    dim3 grid(1, 1, batch_count);
+    dim3 block(dimx, dimy, 1);
+    hipStream_t stream;
+    rocblas_get_stream(handle, &stream);
+
+    if(pivot)
+    {
+        size_t lmemsize = (dimx + n) * sizeof(T) + dimx * (sizeof(I) + sizeof(S));
 
         const I nb = (n + dimy - 1) / dimy;
 
@@ -921,7 +990,7 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
                             A, shiftA, lda, strideA, ipiv, shiftP, strideP, info, batch_count,     \
                             offset, permut_idx, stride);
 
-        if(nb <= 8)
+        if(nb <= 32)
         {
             switch(nb)
             {
@@ -933,21 +1002,37 @@ rocblas_status getf2_run_panel(rocblas_handle handle,
             case 6: RUN_LUFACT_PANEL_REG(6); break;
             case 7: RUN_LUFACT_PANEL_REG(7); break;
             case 8: RUN_LUFACT_PANEL_REG(8); break;
+            case 9: RUN_LUFACT_PANEL_REG(9); break;
+            case 10: RUN_LUFACT_PANEL_REG(10); break;
+            case 11: RUN_LUFACT_PANEL_REG(11); break;
+            case 12: RUN_LUFACT_PANEL_REG(12); break;
+            case 13: RUN_LUFACT_PANEL_REG(13); break;
+            case 14: RUN_LUFACT_PANEL_REG(14); break;
+            case 15: RUN_LUFACT_PANEL_REG(15); break;
+            case 16: RUN_LUFACT_PANEL_REG(16); break;
+            case 17: RUN_LUFACT_PANEL_REG(17); break;
+            case 18: RUN_LUFACT_PANEL_REG(18); break;
+            case 19: RUN_LUFACT_PANEL_REG(19); break;
+            case 20: RUN_LUFACT_PANEL_REG(20); break;
+            case 21: RUN_LUFACT_PANEL_REG(21); break;
+            case 22: RUN_LUFACT_PANEL_REG(22); break;
+            case 23: RUN_LUFACT_PANEL_REG(23); break;
+            case 24: RUN_LUFACT_PANEL_REG(24); break;
+            case 25: RUN_LUFACT_PANEL_REG(25); break;
+            case 26: RUN_LUFACT_PANEL_REG(26); break;
+            case 27: RUN_LUFACT_PANEL_REG(27); break;
+            case 28: RUN_LUFACT_PANEL_REG(28); break;
+            case 29: RUN_LUFACT_PANEL_REG(29); break;
+            case 30: RUN_LUFACT_PANEL_REG(30); break;
+            case 31: RUN_LUFACT_PANEL_REG(31); break;
+            case 32: RUN_LUFACT_PANEL_REG(32); break;
             default: ROCSOLVER_UNREACHABLE();
             }
-        }
-        else
-        {
-            ROCSOLVER_LAUNCH_KERNEL((getf2_panel_kernel<T>), grid, block, lmemsize, stream, m, n, A,
-                                    shiftA, lda, strideA, ipiv, shiftP, strideP, info, batch_count,
-                                    offset, permut_idx, stride);
         }
     }
     else
     {
-        size_t lmemsize = (dimx + n) * sizeof(T);
-        ROCSOLVER_LAUNCH_KERNEL((getf2_npvt_panel_kernel<T>), grid, block, lmemsize, stream, m, n,
-                                A, shiftA, lda, strideA, info, batch_count, offset);
+        return rocblas_status_internal_error;
     }
 
     return rocblas_status_success;
@@ -991,6 +1076,11 @@ void getf2_run_scale_update(rocblas_handle handle,
         const I offset, I* permut_idx, const rocblas_stride stride)
 #define INSTANTIATE_GETF2_PANEL(T, I, INFO, U)                                           \
     template rocblas_status getf2_run_panel<T, I, INFO, U>(                              \
+        rocblas_handle handle, const I m, const I n, U A, const rocblas_stride shiftA,   \
+        const I lda, const rocblas_stride strideA, I* ipiv, const rocblas_stride shiftP, \
+        const rocblas_stride strideP, INFO* info, const I batch_count, const bool pivot, \
+        const I offset, I* permut_idx, const rocblas_stride stride);                     \
+    template rocblas_status getf2_run_panel_reg<T, I, INFO, U>(                          \
         rocblas_handle handle, const I m, const I n, U A, const rocblas_stride shiftA,   \
         const I lda, const rocblas_stride strideA, I* ipiv, const rocblas_stride shiftP, \
         const rocblas_stride strideP, INFO* info, const I batch_count, const bool pivot, \
