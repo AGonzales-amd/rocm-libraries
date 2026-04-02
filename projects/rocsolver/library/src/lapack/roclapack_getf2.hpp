@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -208,6 +208,20 @@ inline I getf2_get_checksingularity_blksize(const I n)
 template <bool ISBATCHED, typename T, typename I, std::enable_if_t<!rocblas_is_complex<T>, int> = 0>
 int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 {
+#ifdef ROCSOLVER_TUNE_GETF2_SPKERNEL
+    {
+        static int ker = 0;
+        static const char* str_ker = nullptr;
+
+        if(!str_ker)
+        {
+            str_ker = std::getenv("ROCSOLVER_GETF2_SPKERNEL");
+            ker = atoi(str_ker);
+        }
+
+        return ker;
+    }
+#endif
     int ker = 0;
 
     if(m > GETF2_SPKER_MAX_M || n > GETF2_SPKER_MAX_N || inca != 1)
@@ -257,20 +271,16 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
         // Normal pivoting case (real precisions)
         if(pivot)
         {
-            if(n <= 20)
+            if(m < 96 && n <= 64)
             {
-                ker = (m <= 32) ? 1 : 2;
+                ker = 1;
             }
-            else if((n <= 28 && m >= 6) || (n > 28 && n <= 36 && m >= 8 && m <= 512)
-                    || (n > 36 && n <= 44 && m >= 10 && m <= 512)
-                    || (n > 44 && n <= 52 && m >= 16 && m <= 512)
-                    || (n > 52 && n <= 60 && m >= 44 && m <= 344))
+            else if(m >= n)
             {
-                ker = (m < n) ? 1 : 2;
-            }
-            else if((n > 60 && n <= 68 && m >= n && m <= 344) || (n > 68 && m >= n && m <= 256))
-            {
-                ker = 2;
+                if((m <= 256) || (m <= 512 && n <= 128) || (m <= 1024 && n <= 64))
+                {
+                    ker = 2;
+                }
             }
         }
         // Normal non-pivoting case (real precisions)
@@ -309,6 +319,20 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 template <bool ISBATCHED, typename T, typename I, std::enable_if_t<rocblas_is_complex<T>, int> = 0>
 int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 {
+#ifdef ROCSOLVER_TUNE_GETF2_SPKERNEL
+    {
+        static int ker = 0;
+        static const char* str_ker = nullptr;
+
+        if(!str_ker)
+        {
+            str_ker = std::getenv("ROCSOLVER_GETF2_SPKERNEL");
+            ker = atoi(str_ker);
+        }
+
+        return ker;
+    }
+#endif
     int ker = 0;
 
     if(m > GETF2_SPKER_MAX_M || n > GETF2_SPKER_MAX_N || inca != 1)
@@ -379,24 +403,21 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
         // Normal non-pivoting case (complex precisions)
         else
         {
-            if(n <= 12)
+            if(m <= 42 && n <= 64)
             {
-                ker = (m < n || (m > 28 && m <= 512)) ? 1 : 2;
+                ker = 1;
             }
-            else if(n <= 20 && m <= 928)
+            else if(m <= 64 && n <= 64)
             {
-                ker = (m < n || (m > 128 && m <= 512)) ? 1 : 2;
+                ker = (m < n) ? 2 : 1;
             }
-            else if(n > 20 && n <= 28 && m >= 8 && m <= 704)
+            else if(m >= n)
             {
-                ker = (m < n || (m > 288 && m <= 512)) ? 1 : 2;
-            }
-            else if((n > 28 && n <= 36 && m >= n && m <= 480)
-                    || (n > 36 && n <= 52 && m >= n && m <= 256)
-                    || (n > 52 && n <= 60 && m >= n && m <= 208)
-                    || (n > 60 && n <= 68 && m >= n && m <= 172) || (n > 68 && m >= n && m <= 128))
-            {
-                ker = 2;
+                if((m <= 256) || (m <= 448 && n <= 128) || (m <= 640 && n <= 64)
+                   || (m <= 768 && n <= 58) || (m <= 1024 && n <= 50))
+                {
+                    ker = 2;
+                }
             }
         }
     }
