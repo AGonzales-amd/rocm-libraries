@@ -206,7 +206,7 @@ inline I getf2_get_checksingularity_blksize(const I n)
     Returns 2 when the use of the panel kernel will give better performance,
     Returns 0 when it would be better to use the normal code. **/
 template <bool ISBATCHED, typename T, typename I, std::enable_if_t<!rocblas_is_complex<T>, int> = 0>
-int select_spkernel(const I m, const I n, const I inca, const bool pivot)
+int select_spkernel(const I m, const I n, const I inca, const I batch_count, const bool pivot)
 {
 #ifdef ROCSOLVER_TUNE_GETF2_SPKERNEL
     {
@@ -232,25 +232,58 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
         // Batch pivoting case (real precisions)
         if(pivot)
         {
-            if(n <= 28)
-            {
-                ker = (m <= 140) ? 1 : 2;
-            }
-            else if(n <= 44)
-            {
-                ker = (m <= 256) ? 1 : 2;
-            }
-            else if((n <= 52 && (m <= 392 || m > 504)) || (n > 52 && n <= 60 && (m <= 392 || m > 624))
-                    || (n > 60 && n <= 68 && (m <= 296 || m > 864)))
-            {
-                ker = (m <= 256) ? 1 : 2;
-            }
-            else if((n > 68 && n <= 76 && m >= n && (m <= 296 || m > 592))
-                    || (n > 76 && n <= 92 && m >= n && (m <= 244 || m > 848))
-                    || (n > 92 && n <= 108 && m >= n && (m <= 256 || m > 592))
-                    || (n > 108 && m >= n && (m <= 164 || m > 736)))
+            // Base batch tuning
+            if(m >= 18 && n >= 18 && n <= 26 && m >= n)
             {
                 ker = 2;
+            }
+            else if(n <= 64 && m < 128)
+            {
+                ker = 1;
+            }
+            else if(m >= n)
+            {
+                if((m <= 256) || (m <= 512 && n <= 256) || (m <= 1024 && n <= 96))
+                {
+                    ker = 2;
+                }
+            }
+
+            // batch specific case
+            if(batch_count <= 32)
+            {
+                if(m > 512 && m <= 1024 && n <= 160)
+                {
+                    ker = 2;
+                }
+            }
+            else if(batch_count <= 64)
+            {
+                if((m >= 50 && n >= 18 && n <= 26) || (m > 512 && m <= 640 && n <= 224)
+                   || (m > 640 && m <= 1024 && n <= 256))
+                {
+                    ker = 2;
+                }
+            }
+            else if(batch_count <= 256)
+            {
+                if(m > 256 && m <= 1024 && n <= 256)
+                {
+                    ker = 2;
+                }
+            }
+            else
+            {
+                if(m >= 26 && n >= 18 && n <= 26)
+                {
+                    ker = 2;
+                }
+                else if(n <= 64
+                        && (m < 192 || (m < 256 && n > 32) || (m < 448 && n > 42)
+                            || (m <= 512 && n > 50)))
+                {
+                    ker = 1;
+                }
             }
         }
         // Batch non-pivoting case (real precisions)
@@ -317,7 +350,7 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 
 /** Complex type version **/
 template <bool ISBATCHED, typename T, typename I, std::enable_if_t<rocblas_is_complex<T>, int> = 0>
-int select_spkernel(const I m, const I n, const I inca, const bool pivot)
+int select_spkernel(const I m, const I n, const I inca, const I batch_count, const bool pivot)
 {
 #ifdef ROCSOLVER_TUNE_GETF2_SPKERNEL
     {
@@ -511,7 +544,7 @@ void rocsolver_getf2_getMemorySize(const I m,
 
 #ifdef OPTIMAL
     bool nomem = (!std::is_same<I, int64_t>::value
-                  && select_spkernel<ISBATCHED, T>(m, n, inca, pivot) && !inblocked);
+                  && select_spkernel<ISBATCHED, T>(m, n, inca, batch_count, pivot) && !inblocked);
 
     // no workspace needed if using optimized kernel for small sizes
     if(nomem)
@@ -623,7 +656,7 @@ rocblas_status rocsolver_getf2_template(rocblas_handle handle,
     }
 
 #ifdef OPTIMAL
-    int spker = select_spkernel<ISBATCHED, T>(m, n, inca, pivot);
+    int spker = select_spkernel<ISBATCHED, T>(m, n, inca, batch_count, pivot);
     if(!std::is_same<I, int64_t>::value && spker > 0)
     {
         // Use specialized kernels for small matrices
