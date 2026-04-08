@@ -430,28 +430,47 @@ int select_spkernel(const I m, const I n, const I inca, const I batch_count, con
         // Batch pivoting case (complex precisions)
         if(pivot)
         {
-            if((n <= 20) || (n <= 28 && m <= 656) || (n > 28 && n <= 36 && m <= 504))
+            if(n <= 64 && (m < n || m <= 48))
             {
-                ker = (m <= 64) ? 1 : 2;
+                ker = 1;
             }
-            else if(n > 36 && n <= 44 && m >= 6 && m <= 624)
+            else if(m > n)
             {
-                ker = (m < n || (m > 110 && m <= 132)) ? 1 : 2;
+                if(m <= 256 || (m <= 448 && n <= 224) || (m <= 512 && n <= 192)
+                   || (m <= 896 && n <= 96) || (m <= 1024 && n <= 64))
+                {
+                    ker = 2;
+                }
             }
-            else if(n > 44 && n <= 52 && m >= 8 && m <= 504)
+
+            if(batch_count > 16)
             {
-                ker = (m <= 228) ? 1 : 2;
-            }
-            else if(n > 52 && n <= 60 && m >= 10 && m <= 504 && (m <= 256 || m > 448))
-            {
-                ker = (m <= 256) ? 1 : 2;
-            }
-            else if((n > 60 && n <= 68 && m >= n && m <= 656 && (m <= 148 || m > 328))
-                    || (n > 68 && n <= 76 && m >= n && m <= 896 && (m <= 148 || m > 204))
-                    || (n > 76 && n <= 124 && m >= n && (m <= 128 || m > 328))
-                    || (n > 124 && m >= n && m > 228))
-            {
-                ker = 2;
+                if(batch_count <= 32)
+                {
+                    if(m > 256 && ((m <= 512 && n <= 256) || (m <= 832 && n <= 128))
+                       || (m > 832 && m <= 1024 && n <= 160))
+                    {
+                        ker = 2;
+                    }
+                }
+                else if(batch_count <= 256)
+                {
+                    if(m > 256 && m <= 1024 && n <= 256)
+                    {
+                        ker = 2;
+                    }
+                }
+                else
+                {
+                    if(n <= 64 && (m <= 64 || (n >= 42 && m <= 256)))
+                    {
+                        ker = 1;
+                    }
+                    else if(m >= n && m > 64 && m <= 1024 && n <= 256)
+                    {
+                        ker = 2;
+                    }
+                }
             }
         }
         // Batch non-pivoting case (complex precisions)
