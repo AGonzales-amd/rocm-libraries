@@ -232,57 +232,111 @@ int select_spkernel(const I m, const I n, const I inca, const I batch_count, con
         // Batch pivoting case (real precisions)
         if(pivot)
         {
-            // Base batch tuning
-            if(m >= 18 && n >= 18 && n <= 26 && m >= n)
+            if constexpr(std::is_same_v<T, float>)
             {
-                ker = 2;
-            }
-            else if(n <= 64 && m < 128)
-            {
-                ker = 1;
-            }
-            else if(m >= n)
-            {
-                if((m <= 256) || (m <= 512 && n <= 256) || (m <= 1024 && n <= 96))
+                // Base batch tuning
+                if(m >= 18 && n >= 18 && n <= 26 && m >= n)
                 {
                     ker = 2;
                 }
-            }
+                else if(n <= 64 && m < 128)
+                {
+                    ker = 1;
+                }
+                else if(m >= n)
+                {
+                    if((m <= 256) || (m <= 512 && n <= 256) || (m <= 1024 && n <= 96))
+                    {
+                        ker = 2;
+                    }
+                }
 
-            // batch specific case
-            if(batch_count <= 32)
-            {
-                if(m > 512 && m <= 1024 && n <= 160)
+                // batch specific case
+                if(batch_count > 16)
                 {
-                    ker = 2;
-                }
-            }
-            else if(batch_count <= 64)
-            {
-                if((m >= 50 && n >= 18 && n <= 26) || (m > 512 && m <= 640 && n <= 224)
-                   || (m > 640 && m <= 1024 && n <= 256))
-                {
-                    ker = 2;
-                }
-            }
-            else if(batch_count <= 256)
-            {
-                if(m > 256 && m <= 1024 && n <= 256)
-                {
-                    ker = 2;
+                    if(batch_count <= 32)
+                    {
+                        if(m > 512 && m <= 1024 && n <= 160)
+                        {
+                            ker = 2;
+                        }
+                    }
+                    else if(batch_count <= 64)
+                    {
+                        if((m >= 50 && n >= 18 && n <= 26) || (m > 512 && m <= 640 && n <= 224)
+                           || (m > 640 && m <= 1024 && n <= 256))
+                        {
+                            ker = 2;
+                        }
+                    }
+                    else if(batch_count <= 256)
+                    {
+                        if(m > 256 && m <= 1024 && n <= 256)
+                        {
+                            ker = 2;
+                        }
+                    }
+                    else
+                    {
+                        if(m >= 26 && n >= 18 && n <= 26)
+                        {
+                            ker = 2;
+                        }
+                        else if(n <= 64
+                                && (m < 192 || (m < 256 && n > 32) || (m < 448 && n > 42)
+                                    || (m <= 512 && n > 50)))
+                        {
+                            ker = 1;
+                        }
+                    }
                 }
             }
             else
             {
-                if(m >= 26 && n >= 18 && n <= 26)
-                {
-                    ker = 2;
-                }
-                else if(n <= 64
-                        && (m < 192 || (m < 256 && n > 32) || (m < 448 && n > 42)
-                            || (m <= 512 && n > 50)))
+                if(n <= 64 && m <= 96)
                 {
                     ker = 1;
+                }
+                else if(m >= n)
+                {
+                    if(m <= 256 || (m <= 384 && n <= 256) || (m <= 448 && n <= 224)
+                       || (m <= 512 && n <= 192) || (m <= 896 && n <= 96) || (m <= 1024 && n <= 64))
+                    {
+                        ker = 2;
+                    }
+                }
+
+                if(batch_count > 16)
+                {
+                    if(batch_count <= 32)
+                    {
+                        if(m > 256
+                           && ((m <= 512 && n <= 256) || (m <= 896 && n <= 128)
+                               || (m > 896 && m <= 1024 && n <= 160)))
+                        {
+                            ker = 2;
+                        }
+                    }
+                    else if(batch_count <= 256)
+                    {
+                        if(batch_count > 128 && n >= 58 && m <= 64 && m <= 512)
+                        {
+                            ker = 1;
+                        }
+                        else if(m >= n && (n > 64 || m > 96) && m <= 1024 && n <= 256)
+                        {
+                            ker = 2;
+                        }
+                    }
+                    else
+                    {
+                        if(n <= 64
+                           && (m <= 128 || (n >= 16 && m <= 160) || (n >= 24 && m <= 256)
+                               || (n >= 32 && m <= 512)))
+                        {
+                            ker = 1;
+                        }
+                    }
                 }
             }
         }
