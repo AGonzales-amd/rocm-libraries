@@ -430,45 +430,74 @@ int select_spkernel(const I m, const I n, const I inca, const I batch_count, con
         // Batch pivoting case (complex precisions)
         if(pivot)
         {
-            if(n <= 64 && (m < n || m <= 48))
+            if constexpr(std::is_same_v<T, rocblas_float_complex>)
             {
-                ker = 1;
+                if(n <= 64 && (m < n || m <= 48))
+                {
+                    ker = 1;
+                }
+                else if(m >= n)
+                {
+                    if(m <= 256 || (m <= 448 && n <= 224) || (m <= 512 && n <= 192)
+                       || (m <= 896 && n <= 96) || (m <= 1024 && n <= 64))
+                    {
+                        ker = 2;
+                    }
+                }
+
+                if(batch_count > 16)
+                {
+                    if(batch_count <= 32)
+                    {
+                        if(m > 256 && ((m <= 512 && n <= 256) || (m <= 832 && n <= 128))
+                           || (m > 832 && m <= 1024 && n <= 160))
+                        {
+                            ker = 2;
+                        }
+                    }
+                    else if(batch_count <= 256)
+                    {
+                        if(m > 256 && m <= 1024 && n <= 256)
+                        {
+                            ker = 2;
+                        }
+                    }
+                    else
+                    {
+                        if(n <= 64 && (m <= 64 || (n >= 42 && m <= 256)))
+                        {
+                            ker = 1;
+                        }
+                        else if(m >= n && m > 64 && m <= 1024 && n <= 256)
+                        {
+                            ker = 2;
+                        }
+                    }
+                }
             }
-            else if(m > n)
+            else
             {
-                if(m <= 256 || (m <= 448 && n <= 224) || (m <= 512 && n <= 192)
-                   || (m <= 896 && n <= 96) || (m <= 1024 && n <= 64))
+                if(n <= 24 && m > 32 && m <= 1024)
                 {
                     ker = 2;
                 }
-            }
+                else if(n <= 64 && (m < n || m < 42))
+                {
+                    ker = 1;
+                }
+                else if(m >= n)
+                {
+                    if(m >= 42 && m <= 1024 && n <= 256)
+                    {
+                        ker = 2;
+                    }
+                }
 
-            if(batch_count > 16)
-            {
-                if(batch_count <= 32)
+                if(batch_count > 256)
                 {
-                    if(m > 256 && ((m <= 512 && n <= 256) || (m <= 832 && n <= 128))
-                       || (m > 832 && m <= 1024 && n <= 160))
-                    {
-                        ker = 2;
-                    }
-                }
-                else if(batch_count <= 256)
-                {
-                    if(m > 256 && m <= 1024 && n <= 256)
-                    {
-                        ker = 2;
-                    }
-                }
-                else
-                {
-                    if(n <= 64 && (m <= 64 || (n >= 42 && m <= 256)))
+                    if(n <= 64 && n > 42 && m <= 256)
                     {
                         ker = 1;
-                    }
-                    else if(m >= n && m > 64 && m <= 1024 && n <= 256)
-                    {
-                        ker = 2;
                     }
                 }
             }
