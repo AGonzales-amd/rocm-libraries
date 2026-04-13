@@ -13,6 +13,8 @@ Full documentation for rocSOLVER is available at the [rocSOLVER documentation](h
 * Computation of different matrix condition numbers
     * GECON
     * GECON_64
+* Hessenberg decomposition
+    * GEHD2
 
 ### Changed
 ### Removed

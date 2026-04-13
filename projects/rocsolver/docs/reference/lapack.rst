@@ -20,7 +20,7 @@ into the following categories:
 * :ref:`svds`: Singular values and related problems for general matrices.
 
 .. note::
-   
+
    The API descriptions use the following notations:
 
    *  ``i``, ``j``, and ``k`` are used as general purpose indices. In some legacy LAPACK APIs, ``k`` can be
@@ -892,6 +892,18 @@ rocsolver_<type>hegst_strided_batched()
 .. doxygenfunction:: rocsolver_zhegst_strided_batched
    :outline:
 .. doxygenfunction:: rocsolver_chegst_strided_batched
+
+.. _gehd2:
+
+rocsolver_<type>gehd2()
+---------------------------------------------------
+.. doxygenfunction:: rocsolver_zgehd2
+   :outline:
+.. doxygenfunction:: rocsolver_cgehd2
+   :outline:
+.. doxygenfunction:: rocsolver_dgehd2
+   :outline:
+.. doxygenfunction:: rocsolver_sgehd2
 
 
 
