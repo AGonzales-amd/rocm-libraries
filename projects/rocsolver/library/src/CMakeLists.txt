@@ -350,6 +350,11 @@ if(OPTIMAL)
     specialized/roclapack_getf2_small_db.cpp
     specialized/roclapack_getf2_small_cb.cpp
     specialized/roclapack_getf2_small_zb.cpp
+    # getf2 single-block kernel
+    specialized/roclapack_getf2_kernel_small_s.cpp
+    specialized/roclapack_getf2_kernel_small_d.cpp
+    specialized/roclapack_getf2_kernel_small_c.cpp
+    specialized/roclapack_getf2_kernel_small_z.cpp
     # getri
     specialized/roclapack_getri_specialized_kernels_s.cpp
     specialized/roclapack_getri_specialized_kernels_d.cpp

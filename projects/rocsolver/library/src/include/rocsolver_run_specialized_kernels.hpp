@@ -345,6 +345,23 @@ rocblas_status getf2_run_small(rocblas_handle handle,
                                I* permut_idx,
                                const rocblas_stride stride);
 
+template <typename T, typename I, typename INFO, typename U>
+rocblas_status getf2_run_kernel_small(rocblas_handle handle,
+                                      const I m,
+                                      const I n,
+                                      U A,
+                                      const rocblas_stride shiftA,
+                                      const I lda,
+                                      const rocblas_stride strideA,
+                                      I* ipiv,
+                                      const rocblas_stride shiftP,
+                                      const rocblas_stride strideP,
+                                      INFO* info,
+                                      const I batch_count,
+                                      const I offset,
+                                      I* permut_idx,
+                                      const rocblas_stride stridePI);
+
 template <typename T, typename U>
 rocblas_status getri_run_small(rocblas_handle handle,
                                const rocblas_int n,
