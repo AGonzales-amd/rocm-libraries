@@ -204,6 +204,7 @@ inline I getf2_get_checksingularity_blksize(const I n)
 /** This function tests if one of the specialized kernels should be used.
     Returns 1 when the use of the small kernel will give better performance,
     Returns 2 when the use of the panel kernel will give better performance,
+    Returns 3 when the use of the single-block kernel will give better performance,
     Returns 0 when it would be better to use the normal code. **/
 template <bool ISBATCHED, typename T, typename I, std::enable_if_t<!rocblas_is_complex<T>, int> = 0>
 int select_spkernel(const I m, const I n, const I inca, const bool pivot)
@@ -212,6 +213,9 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 
     if(m > GETF2_SPKER_MAX_M || n > GETF2_SPKER_MAX_N || inca != 1)
         return ker;
+
+    if(pivot && n <= 16 && m <= 1024)
+        return 3;
 
     if(ISBATCHED)
     {
@@ -313,6 +317,9 @@ int select_spkernel(const I m, const I n, const I inca, const bool pivot)
 
     if(m > GETF2_SPKER_MAX_M || n > GETF2_SPKER_MAX_N || inca != 1)
         return ker;
+
+    if(pivot && n <= 16 && m <= 1024)
+        return 3;
 
     if(ISBATCHED)
     {
@@ -617,6 +624,14 @@ rocblas_status rocsolver_getf2_template(rocblas_handle handle,
         {
             return getf2_run_panel<T>(handle, m, n, A, shiftA, lda, strideA, ipiv, shiftP, strideP,
                                       info, batch_count, pivot, offset, permut_idx, stridePI);
+        }
+
+        // use single-block kernel for small m x n matrices (n <= 16, m <= 1024)
+        if(spker == 3)
+        {
+            return getf2_run_kernel_small<T>(handle, m, n, A, shiftA, lda, strideA, ipiv, shiftP,
+                                             strideP, info, batch_count, offset, permut_idx,
+                                             stridePI);
         }
     }
 #endif
