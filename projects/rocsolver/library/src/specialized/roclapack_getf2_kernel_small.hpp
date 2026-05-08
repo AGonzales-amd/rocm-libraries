@@ -56,20 +56,19 @@ ROCSOLVER_BEGIN_NAMESPACE
  * MAX_M  Thread block size (= m, padded to the launch value).
  **/
 template <int NB, int MAX_M, typename T, typename I, typename INFO, typename U>
-ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
-    getf2_kernel_small(const I m,
-                       U AA,
-                       const rocblas_stride shiftA,
-                       const I lda,
-                       const rocblas_stride strideA,
-                       I* ipivA,
-                       const rocblas_stride shiftP,
-                       const rocblas_stride strideP,
-                       INFO* infoA,
-                       const I batch_count,
-                       const I offset,
-                       I* permut_idx,
-                       const rocblas_stride stridePI)
+ROCSOLVER_KERNEL void __launch_bounds__(MAX_M) getf2_kernel_small(const I m,
+                                                                  U AA,
+                                                                  const rocblas_stride shiftA,
+                                                                  const I lda,
+                                                                  const rocblas_stride strideA,
+                                                                  I* ipivA,
+                                                                  const rocblas_stride shiftP,
+                                                                  const rocblas_stride strideP,
+                                                                  INFO* infoA,
+                                                                  const I batch_count,
+                                                                  const I offset,
+                                                                  I* permut_idx,
+                                                                  const rocblas_stride stridePI)
 {
     using S = decltype(std::real(T{}));
 
@@ -85,15 +84,15 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
     INFO* info = infoA + id;
 
     // shared memory layout:
-    //   col_sh   [MAX_M] T  — current column for pivot search
-    //   pivrow_sh[NB]    T  — pivot row for trailing update
-    //   sval     [MAX_M] S  — abs values for reduction
-    //   sidx     [MAX_M] I  — row indices for reduction
+    //   col_sh   [MAX_M] T  -- current column for pivot search
+    //   pivrow_sh[NB]    T  -- pivot row for trailing update
+    //   sval     [MAX_M] S  -- abs values for reduction
+    //   sidx     [MAX_M] I  -- row indices for reduction
     extern __shared__ double lmem[];
-    T* col_sh    = reinterpret_cast<T*>(lmem);
+    T* col_sh = reinterpret_cast<T*>(lmem);
     T* pivrow_sh = col_sh + MAX_M;
-    S* sval      = reinterpret_cast<S*>(pivrow_sh + NB);
-    I* sidx      = reinterpret_cast<I*>(sval + MAX_M);
+    S* sval = reinterpret_cast<S*>(pivrow_sh + NB);
+    I* sidx = reinterpret_cast<I*>(sval + MAX_M);
 
     // Each thread loads its row into registers.
     T rA[NB];
@@ -114,16 +113,17 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
             break;
 
         // ----------------------------------------------------------------
-        // 1. Broadcast column k to shared memory for pivot search.
+        // 1. Broadcast column k to shared memory indexed by logical row.
+        //    sval/sidx are also indexed by logical row so the reduction
+        //    correctly finds the max in the sub-column [k..m-1].
         // ----------------------------------------------------------------
-        col_sh[tx] = rA[k];
-        sval[tx]   = (tx >= k && tx < m) ? aabs<S>(rA[k]) : S(-1);
-        sidx[tx]   = tx;
+        col_sh[myrow] = rA[k];
+        sval[tx] = (myrow >= k && myrow < m) ? aabs<S>(rA[k]) : S(-1);
+        sidx[tx] = myrow;
         __syncthreads();
 
         // ----------------------------------------------------------------
-        // 2. Parallel reduction to find index of max absolute value in
-        //    col_sh[k..m-1].
+        // 2. Parallel reduction to find logical row index of max |col[k:]|.
         // ----------------------------------------------------------------
         for(I stride = MAX_M / 2; stride > 0; stride /= 2)
         {
@@ -143,8 +143,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
             __syncthreads();
         }
 
-        I pivot_idx = sidx[0]; // row index of the pivot element
-        T pivot_val = col_sh[pivot_idx];
+        I pivot_idx = sidx[0]; // logical row index of the pivot element
+        T pivot_val = col_sh[pivot_idx]; // col_sh is indexed by logical row
 
         // ----------------------------------------------------------------
         // 3. Check singularity and compute reciprocal of pivot.
@@ -161,6 +161,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
         if(myrow == static_cast<I>(pivot_idx))
         {
             myrow = k;
+            mypiv = pivot_idx + 1; // pivot chosen for column k
             // share the pivot row (columns k+1..NB-1) into shared memory
 #pragma unroll NB
             for(I j = k + 1; j < NB; ++j)
@@ -169,7 +170,6 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
         else if(myrow == k)
         {
             myrow = pivot_idx;
-            mypiv = pivot_idx + 1;
             if(permut != nullptr && static_cast<I>(pivot_idx) != k)
                 swap(permut[k], permut[pivot_idx]);
         }
@@ -233,17 +233,18 @@ rocblas_status getf2_run_kernel_small(rocblas_handle handle,
     while(max_m < m)
         max_m *= 2;
 
-    size_t lmemsize = sizeof(T) * (max_m + n) + max_m * (sizeof(decltype(std::real(T{}))) + sizeof(I));
+    size_t lmemsize
+        = sizeof(T) * (max_m + n) + max_m * (sizeof(decltype(std::real(T{}))) + sizeof(I));
 
     const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
     if(lmemsize > props->sharedMemPerBlock)
         return rocblas_status_internal_error;
 
 // Macro: launch the kernel with NB and MAX_M baked in at compile time.
-#define RUN_GETF2_KERNEL_SMALL(NB, MAX_M)                                                     \
-    ROCSOLVER_LAUNCH_KERNEL((getf2_kernel_small<NB, MAX_M, T, I, INFO, U>), grid, block,      \
-                            lmemsize, stream, m, A, shiftA, lda, strideA, ipiv, shiftP,       \
-                            strideP, info, batch_count, offset, permut_idx, stridePI)
+#define RUN_GETF2_KERNEL_SMALL(NB, MAX_M)                                                          \
+    ROCSOLVER_LAUNCH_KERNEL((getf2_kernel_small<NB, MAX_M, T, I, INFO, U>), grid, block, lmemsize, \
+                            stream, m, A, shiftA, lda, strideA, ipiv, shiftP, strideP, info,       \
+                            batch_count, offset, permut_idx, stridePI)
 
     dim3 grid(1, 1, batch_count);
     dim3 block(max_m, 1, 1);
@@ -521,11 +522,11 @@ rocblas_status getf2_run_kernel_small(rocblas_handle handle,
     Instantiation macros
 *************************************************************/
 
-#define INSTANTIATE_GETF2_KERNEL_SMALL(T, I, INFO, U)                                              \
-    template rocblas_status getf2_run_kernel_small<T, I, INFO, U>(                                 \
-        rocblas_handle handle, const I m, const I n, U A, const rocblas_stride shiftA,             \
-        const I lda, const rocblas_stride strideA, I* ipiv, const rocblas_stride shiftP,           \
-        const rocblas_stride strideP, INFO* info, const I batch_count, const I offset,             \
+#define INSTANTIATE_GETF2_KERNEL_SMALL(T, I, INFO, U)                                    \
+    template rocblas_status getf2_run_kernel_small<T, I, INFO, U>(                       \
+        rocblas_handle handle, const I m, const I n, U A, const rocblas_stride shiftA,   \
+        const I lda, const rocblas_stride strideA, I* ipiv, const rocblas_stride shiftP, \
+        const rocblas_stride strideP, INFO* info, const I batch_count, const I offset,   \
         I* permut_idx, const rocblas_stride stridePI)
 
 ROCSOLVER_END_NAMESPACE
