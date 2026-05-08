@@ -149,16 +149,10 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
         // ----------------------------------------------------------------
         // 3. Check singularity and compute reciprocal of pivot.
         // ----------------------------------------------------------------
-        if(pivot_val == T(0))
-        {
-            if(myinfo == 0)
-                myinfo = static_cast<INFO>(k + 1);
-            pivot_val = T(1); // avoid division by zero; L column will be zero anyway
-        }
-        else
-        {
-            pivot_val = S(1) / pivot_val;
-        }
+        if(pivot_val != T(0))
+            pivot_val = T(1) / pivot_val;
+        else if(myinfo == 0)
+            myinfo = static_cast<INFO>(k + 1);
 
         // ----------------------------------------------------------------
         // 4. Lazy row swap (mirrors getf2_small_kernel):
@@ -181,15 +175,6 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
         }
         __syncthreads();
 
-        // Write ipiv; only the thread logically assigned to row k does this.
-        if(tx == 0 && myrow == static_cast<I>(pivot_idx))
-        {
-            // handled below; ipiv written after loop for simplicity
-        }
-        // Use a single thread to write ipiv[k].
-        if(tx == k)
-            ipiv[k] = static_cast<I>(pivot_idx) + 1 + offset;
-
         // ----------------------------------------------------------------
         // 5. Scale L column and update trailing submatrix in registers.
         // ----------------------------------------------------------------
@@ -204,15 +189,16 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_M)
     }
 
     // Write results back to global memory.
+    if(myrow < dim)
+        ipiv[myrow] = mypiv + offset;
+    if(myrow == 0 && *info == 0 && myinfo > 0)
+        *info = myinfo + offset;
     if(myrow < m)
     {
 #pragma unroll NB
         for(I j = 0; j < NB; ++j)
             A[myrow + j * lda] = rA[j];
     }
-
-    if(tx == 0 && *info == 0 && myinfo > 0)
-        *info = myinfo + offset;
 }
 
 /*************************************************************
