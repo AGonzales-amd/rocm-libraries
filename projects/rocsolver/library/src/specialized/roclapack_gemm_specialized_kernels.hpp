@@ -224,9 +224,12 @@ ROCSOLVER_EXPORT rocblas_status rocsolver_gemm(rocblas_handle handle,
 
 #ifndef USE_INTERNAL_GEMM
     if(inca == 1 && incb == 1 && incc == 1)
-        return rocblasCall_gemm(handle, transA, transB, m, n, k, alpha, A, shiftA, lda, strideA, B,
-                                shiftB, ldb, strideB, beta, C, shiftC, ldc, strideC, batch_count,
-                                work);
+    {
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_gemm(handle, transA, transB, m, n, k, alpha, A, shiftA,
+                                                lda, strideA, B, shiftB, ldb, strideB, beta, C,
+                                                shiftC, ldc, strideC, batch_count, work));
+        return rocblas_status_success;
+    }
 #endif
 
     hipStream_t stream;

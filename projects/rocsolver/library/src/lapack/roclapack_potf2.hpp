@@ -225,9 +225,9 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
             for(I j = 0; j < n; ++j)
             {
                 // Compute U(J,J) and test for non-positive-definiteness.
-                rocblasCall_dot<COMPLEX, T>(handle, j, A, shiftA + idx2D(0, j, lda), 1, strideA, A,
-                                            shiftA + idx2D(0, j, lda), 1, strideA, batch_count,
-                                            pivots, work);
+                THROW_IF_ROCBLAS_ERROR(rocblasCall_dot<COMPLEX, T>(
+                    handle, j, A, shiftA + idx2D(0, j, lda), 1, strideA, A,
+                    shiftA + idx2D(0, j, lda), 1, strideA, batch_count, pivots, work));
 
                 ROCSOLVER_LAUNCH_KERNEL((sqrtDiagOnward<T, I>), dim3(batch_count), dim3(1), 0, stream,
                                         A, shiftA, strideA, idx2D(j, j, lda), j, pivots, info);
@@ -239,18 +239,19 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
                         rocsolver_lacgv_template<T>(handle, j, A, shiftA + idx2D(0, j, lda), (I)1,
                                                     strideA, batch_count);
 
-                    rocblasCall_gemv<T>(handle, rocblas_operation_transpose, j, n - j - 1, scalars,
-                                        0, A, shiftA + idx2D(0, j + 1, lda), lda, strideA, A,
-                                        shiftA + idx2D(0, j, lda), 1, strideA, scalars + 2, 0, A,
-                                        shiftA + idx2D(j, j + 1, lda), lda, strideA, batch_count,
-                                        nullptr);
+                    THROW_IF_ROCBLAS_ERROR(rocblasCall_gemv<T>(
+                        handle, rocblas_operation_transpose, j, n - j - 1, scalars, 0, A,
+                        shiftA + idx2D(0, j + 1, lda), lda, strideA, A, shiftA + idx2D(0, j, lda),
+                        1, strideA, scalars + 2, 0, A, shiftA + idx2D(j, j + 1, lda), lda, strideA,
+                        batch_count, nullptr));
 
                     if(COMPLEX)
                         rocsolver_lacgv_template<T>(handle, j, A, shiftA + idx2D(0, j, lda), (I)1,
                                                     strideA, batch_count);
 
-                    rocblasCall_scal<T>(handle, n - j - 1, pivots, 1, A,
-                                        shiftA + idx2D(j, j + 1, lda), lda, strideA, batch_count);
+                    THROW_IF_ROCBLAS_ERROR(rocblasCall_scal<T>(handle, n - j - 1, pivots, 1, A,
+                                                               shiftA + idx2D(j, j + 1, lda), lda,
+                                                               strideA, batch_count));
                 }
             }
         }
@@ -260,9 +261,9 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
             for(I j = 0; j < n; ++j)
             {
                 // Compute L(J,J) and test for non-positive-definiteness.
-                rocblasCall_dot<COMPLEX, T>(handle, j, A, shiftA + idx2D(j, 0, lda), lda, strideA,
-                                            A, shiftA + idx2D(j, 0, lda), lda, strideA, batch_count,
-                                            pivots, work);
+                THROW_IF_ROCBLAS_ERROR(rocblasCall_dot<COMPLEX, T>(
+                    handle, j, A, shiftA + idx2D(j, 0, lda), lda, strideA, A,
+                    shiftA + idx2D(j, 0, lda), lda, strideA, batch_count, pivots, work));
 
                 ROCSOLVER_LAUNCH_KERNEL((sqrtDiagOnward<T, I>), dim3(batch_count), dim3(1), 0, stream,
                                         A, shiftA, strideA, idx2D(j, j, lda), j, pivots, info);
@@ -274,18 +275,19 @@ rocblas_status rocsolver_potf2_template(rocblas_handle handle,
                         rocsolver_lacgv_template<T>(handle, j, A, shiftA + idx2D(j, 0, lda), lda,
                                                     strideA, batch_count);
 
-                    rocblasCall_gemv<T>(handle, rocblas_operation_none, n - j - 1, j, scalars, 0, A,
-                                        shiftA + idx2D(j + 1, 0, lda), lda, strideA, A,
-                                        shiftA + idx2D(j, 0, lda), lda, strideA, scalars + 2, 0, A,
-                                        shiftA + idx2D(j + 1, j, lda), 1, strideA, batch_count,
-                                        nullptr);
+                    THROW_IF_ROCBLAS_ERROR(rocblasCall_gemv<T>(
+                        handle, rocblas_operation_none, n - j - 1, j, scalars, 0, A,
+                        shiftA + idx2D(j + 1, 0, lda), lda, strideA, A, shiftA + idx2D(j, 0, lda),
+                        lda, strideA, scalars + 2, 0, A, shiftA + idx2D(j + 1, j, lda), 1, strideA,
+                        batch_count, nullptr));
 
                     if(COMPLEX)
                         rocsolver_lacgv_template<T>(handle, j, A, shiftA + idx2D(j, 0, lda), lda,
                                                     strideA, batch_count);
 
-                    rocblasCall_scal<T>(handle, n - j - 1, pivots, 1, A,
-                                        shiftA + idx2D(j + 1, j, lda), (I)1, strideA, batch_count);
+                    THROW_IF_ROCBLAS_ERROR(rocblasCall_scal<T>(handle, n - j - 1, pivots, 1, A,
+                                                               shiftA + idx2D(j + 1, j, lda), (I)1,
+                                                               strideA, batch_count));
                 }
             }
         }

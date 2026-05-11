@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2021-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2021-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -175,8 +175,9 @@ void rocsolver_trtri_getMemorySize(const rocblas_diagonal diag,
     else
     {
         rocblas_int nn = (n % 128 != 0) ? n : n + 1;
-        rocblasCall_trsm_mem<BATCHED, T>(rocblas_side_right, rocblas_operation_none, nn, blk, 1, 1,
-                                         batch_count, &w1b, size_work2, &w3b, size_work4);
+        THROW_IF_ROCBLAS_ERROR(
+            rocblasCall_trsm_mem<BATCHED, T>(rocblas_side_right, rocblas_operation_none, nn, blk, 1,
+                                             1, batch_count, &w1b, size_work2, &w3b, size_work4));
         *size_work1 = std::max(w1a, w1b);
         *size_work3 = std::max(w3a, w3b);
 
@@ -258,24 +259,26 @@ void trti2(rocblas_handle handle,
     {
         for(rocblas_int j = 1; j < n; ++j)
         {
-            rocblasCall_trmv<T>(handle, uplo, rocblas_operation_none, diag, j, A, shiftA, lda,
-                                strideA, A, shiftA + idx2D(0, j, lda), 1, strideA, work, stdw,
-                                batch_count);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_trmv<T>(
+                handle, uplo, rocblas_operation_none, diag, j, A, shiftA, lda, strideA, A,
+                shiftA + idx2D(0, j, lda), 1, strideA, work, stdw, batch_count));
 
-            rocblasCall_scal<T>(handle, j, alphas + j, stdw, A, shiftA + idx2D(0, j, lda), 1,
-                                strideA, batch_count);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_scal<T>(
+                handle, j, alphas + j, stdw, A, shiftA + idx2D(0, j, lda), 1, strideA, batch_count));
         }
     }
     else //rocblas_fill_lower
     {
         for(rocblas_int j = n - 2; j >= 0; --j)
         {
-            rocblasCall_trmv<T>(handle, uplo, rocblas_operation_none, diag, n - j - 1, A,
-                                shiftA + idx2D(j + 1, j + 1, lda), lda, strideA, A,
-                                shiftA + idx2D(j + 1, j, lda), 1, strideA, work, stdw, batch_count);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_trmv<T>(
+                handle, uplo, rocblas_operation_none, diag, n - j - 1, A,
+                shiftA + idx2D(j + 1, j + 1, lda), lda, strideA, A, shiftA + idx2D(j + 1, j, lda),
+                1, strideA, work, stdw, batch_count));
 
-            rocblasCall_scal<T>(handle, n - j - 1, alphas + j, stdw, A,
-                                shiftA + idx2D(j + 1, j, lda), 1, strideA, batch_count);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_scal<T>(handle, n - j - 1, alphas + j, stdw, A,
+                                                       shiftA + idx2D(j + 1, j, lda), 1, strideA,
+                                                       batch_count));
         }
     }
 
@@ -354,8 +357,9 @@ rocblas_status rocsolver_trtri_template(rocblas_handle handle,
     if(blk == 0)
     {
         // simply use rocblas_trtri
-        rocblasCall_trtri(handle, uplo, diag, n, A, shiftA, lda, strideA, tmpcopy, 0, ldw, strideW,
-                          batch_count, (T*)work1, (T**)work2, workArr);
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_trtri(handle, uplo, diag, n, A, shiftA, lda, strideA,
+                                                 tmpcopy, 0, ldw, strideW, batch_count, (T*)work1,
+                                                 (T**)work2, workArr));
 
         // copy result to A if info is zero
         ROCSOLVER_LAUNCH_KERNEL((copy_mat<T>), dim3(blocks, blocks, batch_count), dim3(BS2, BS2), 0,
@@ -379,14 +383,14 @@ rocblas_status rocsolver_trtri_template(rocblas_handle handle,
                 jb = std::min(n - j, blk);
 
                 // update current block column
-                rocblasCall_trmm(handle, rocblas_side_left, uplo, rocblas_operation_none, diag, j,
-                                 jb, &one, 0, A, shiftA, lda, strideA, A, shiftA + idx2D(0, j, lda),
-                                 lda, strideA, batch_count);
+                THROW_IF_ROCBLAS_ERROR(rocblasCall_trmm(
+                    handle, rocblas_side_left, uplo, rocblas_operation_none, diag, j, jb, &one, 0, A,
+                    shiftA, lda, strideA, A, shiftA + idx2D(0, j, lda), lda, strideA, batch_count));
 
-                rocblasCall_trsm(handle, rocblas_side_right, uplo, rocblas_operation_none, diag, j,
-                                 jb, &minone, A, shiftA + idx2D(j, j, lda), lda, strideA, A,
-                                 shiftA + idx2D(0, j, lda), lda, strideA, batch_count, optim_mem,
-                                 work1, work2, work3, work4);
+                THROW_IF_ROCBLAS_ERROR(rocblasCall_trsm(
+                    handle, rocblas_side_right, uplo, rocblas_operation_none, diag, j, jb, &minone,
+                    A, shiftA + idx2D(j, j, lda), lda, strideA, A, shiftA + idx2D(0, j, lda), lda,
+                    strideA, batch_count, optim_mem, work1, work2, work3, work4));
 
                 trti2<T>(handle, uplo, diag, jb, A, shiftA + idx2D(j, j, lda), lda, strideA,
                          batch_count, (T*)work1, (T*)work3);
@@ -400,15 +404,16 @@ rocblas_status rocsolver_trtri_template(rocblas_handle handle,
                 jb = std::min(n - j, blk);
 
                 // update current block column
-                rocblasCall_trmm(handle, rocblas_side_left, uplo, rocblas_operation_none, diag,
-                                 n - j - jb, jb, &one, 0, A, shiftA + idx2D(j + jb, j + jb, lda),
-                                 lda, strideA, A, shiftA + idx2D(j + jb, j, lda), lda, strideA,
-                                 batch_count);
+                THROW_IF_ROCBLAS_ERROR(rocblasCall_trmm(
+                    handle, rocblas_side_left, uplo, rocblas_operation_none, diag, n - j - jb, jb,
+                    &one, 0, A, shiftA + idx2D(j + jb, j + jb, lda), lda, strideA, A,
+                    shiftA + idx2D(j + jb, j, lda), lda, strideA, batch_count));
 
-                rocblasCall_trsm(handle, rocblas_side_right, uplo, rocblas_operation_none, diag,
-                                 n - j - jb, jb, &minone, A, shiftA + idx2D(j, j, lda), lda,
-                                 strideA, A, shiftA + idx2D(j + jb, j, lda), lda, strideA,
-                                 batch_count, optim_mem, work1, work2, work3, work4);
+                THROW_IF_ROCBLAS_ERROR(
+                    rocblasCall_trsm(handle, rocblas_side_right, uplo, rocblas_operation_none, diag,
+                                     n - j - jb, jb, &minone, A, shiftA + idx2D(j, j, lda), lda,
+                                     strideA, A, shiftA + idx2D(j + jb, j, lda), lda, strideA,
+                                     batch_count, optim_mem, work1, work2, work3, work4));
 
                 // inverse of current diagonal block
                 trti2<T>(handle, uplo, diag, jb, A, shiftA + idx2D(j, j, lda), lda, strideA,

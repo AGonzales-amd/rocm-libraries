@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2019-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -364,20 +364,22 @@ rocblas_status rocsolver_larf_template(rocblas_handle handle,
     //      ZERO ENTRIES ****
 
     // compute the matrix vector product  (W=-A'*X or W=-A*X)
-    rocblasCall_gemv<T>(handle, trans, m, n, cast2constType<T>(scalars), 0, A, shiftA, lda, stridea,
-                        x, shiftx, incx, stridex, cast2constType<T>(scalars + 1), 0, Abyx, 0, 1,
-                        order, batch_count, workArr);
+    THROW_IF_ROCBLAS_ERROR(rocblasCall_gemv<T>(
+        handle, trans, m, n, cast2constType<T>(scalars), 0, A, shiftA, lda, stridea, x, shiftx,
+        incx, stridex, cast2constType<T>(scalars + 1), 0, Abyx, 0, 1, order, batch_count, workArr));
 
     // compute the rank-1 update  (A + tau*X*W'  or A + tau*W*X')
     if(leftside)
     {
-        rocblasCall_ger<COMPLEX, T, I>(handle, m, n, alpha, stridep, x, shiftx, incx, stridex, Abyx,
-                                       0, 1, order, A, shiftA, lda, stridea, batch_count, workArr);
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_ger<COMPLEX, T, I>(
+            handle, m, n, alpha, stridep, x, shiftx, incx, stridex, Abyx, 0, 1, order, A, shiftA,
+            lda, stridea, batch_count, workArr));
     }
     else
     {
-        rocblasCall_ger<COMPLEX, T, I>(handle, m, n, alpha, stridep, Abyx, 0, 1, order, x, shiftx,
-                                       incx, stridex, A, shiftA, lda, stridea, batch_count, workArr);
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_ger<COMPLEX, T, I>(
+            handle, m, n, alpha, stridep, Abyx, 0, 1, order, x, shiftx, incx, stridex, A, shiftA,
+            lda, stridea, batch_count, workArr));
     }
 
     rocblas_set_pointer_mode(handle, old_mode);

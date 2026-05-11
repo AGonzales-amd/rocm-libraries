@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2020-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -638,10 +638,10 @@ rocblas_status rocsolver_sytd2_hetd2_template(rocblas_handle handle,
                                         1, strideA, tmptau, stridet, batch_count, work, norms);
 
             // 2. overwrite tau with w = tmptau*A*v - 1/2*tmptau*(tmptau*v'*A*v)*v
-            rocblasCall_symv_hemv<T>(handle, uplo, n - 1 - j, tmptau, stridet, A,
-                                     shiftA + idx2D(j + 1, j + 1, lda), lda, strideA, A,
-                                     shiftA + idx2D(j + 1, j, lda), 1, strideA, scalars + 1, 0, tau,
-                                     j, 1, strideP, batch_count, work, workArr);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_symv_hemv<T>(
+                handle, uplo, n - 1 - j, tmptau, stridet, A, shiftA + idx2D(j + 1, j + 1, lda), lda,
+                strideA, A, shiftA + idx2D(j + 1, j, lda), 1, strideA, scalars + 1, 0, tau, j, 1,
+                strideP, batch_count, work, workArr));
 
             ROCSOLVER_LAUNCH_KERNEL((latrd_dot_scale_axpy<64, T>), dim3(1, 1, batch_count),
                                     dim3(64, 1, 1), 0, stream, n - 1 - j, A,
@@ -650,10 +650,10 @@ rocblas_status rocsolver_sytd2_hetd2_template(rocblas_handle handle,
 
             // 3. apply the Householder reflector to A as a rank-2 update:
             // A = A - v*w' - w*v'
-            rocblasCall_syr2_her2<T>(handle, uplo, n - 1 - j, scalars, A,
-                                     shiftA + idx2D(j + 1, j, lda), 1, strideA, tau, j, 1, strideP,
-                                     A, shiftA + idx2D(j + 1, j + 1, lda), lda, strideA,
-                                     batch_count, workArr);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_syr2_her2<T>(
+                handle, uplo, n - 1 - j, scalars, A, shiftA + idx2D(j + 1, j, lda), 1, strideA, tau,
+                j, 1, strideP, A, shiftA + idx2D(j + 1, j + 1, lda), lda, strideA, batch_count,
+                workArr));
 
             // 4. Save the used householder scalar
             ROCSOLVER_LAUNCH_KERNEL(set_tau<T>, grid_b, threads, 0, stream, batch_count, tmptau,
@@ -683,9 +683,10 @@ rocblas_status rocsolver_sytd2_hetd2_template(rocblas_handle handle,
                                         1, batch_count, work, norms);
 
             // 2. overwrite tau with w = tmptau*A*v - 1/2*tmptau*tmptau*(v'*A*v*)v
-            rocblasCall_symv_hemv<T>(handle, uplo, j, tmptau, stridet, A, shiftA, lda, strideA, A,
-                                     shiftA + idx2D(0, j, lda), 1, strideA, scalars + 1, 0, tau, 0,
-                                     1, strideP, batch_count, work, workArr);
+            THROW_IF_ROCBLAS_ERROR(
+                rocblasCall_symv_hemv<T>(handle, uplo, j, tmptau, stridet, A, shiftA, lda, strideA,
+                                         A, shiftA + idx2D(0, j, lda), 1, strideA, scalars + 1, 0,
+                                         tau, 0, 1, strideP, batch_count, work, workArr));
 
             ROCSOLVER_LAUNCH_KERNEL((latrd_dot_scale_axpy<64, T>), dim3(1, 1, batch_count),
                                     dim3(64, 1, 1), 0, stream, j, A, shiftA + idx2D(0, j, lda),
@@ -693,9 +694,9 @@ rocblas_status rocsolver_sytd2_hetd2_template(rocblas_handle handle,
 
             // 3. apply the Householder reflector to A as a rank-2 update:
             // A = A - v*w' - w*v'
-            rocblasCall_syr2_her2<T>(handle, uplo, j, scalars, A, shiftA + idx2D(0, j, lda), 1,
-                                     strideA, tau, 0, 1, strideP, A, shiftA, lda, strideA,
-                                     batch_count, workArr);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_syr2_her2<T>(
+                handle, uplo, j, scalars, A, shiftA + idx2D(0, j, lda), 1, strideA, tau, 0, 1,
+                strideP, A, shiftA, lda, strideA, batch_count, workArr));
 
             // 4. Save the used householder scalar
             ROCSOLVER_LAUNCH_KERNEL(set_tau<T>, grid_b, threads, 0, stream, batch_count, tmptau,

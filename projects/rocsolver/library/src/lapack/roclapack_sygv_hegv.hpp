@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2021-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2021-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -265,9 +265,9 @@ rocblas_status rocsolver_sygv_hegv_template(rocblas_handle handle,
             rocblas_operation trans
                 = (uplo == rocblas_fill_upper ? rocblas_operation_conjugate_transpose
                                               : rocblas_operation_none);
-            rocblasCall_trmm(handle, rocblas_side_left, uplo, trans, rocblas_diagonal_non_unit, n,
-                             neig, &one, 0, B, shiftB, ldb, strideB, A, shiftA, lda, strideA,
-                             batch_count, (T**)pivots_workArr);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_trmm(
+                handle, rocblas_side_left, uplo, trans, rocblas_diagonal_non_unit, n, neig, &one, 0,
+                B, shiftB, ldb, strideB, A, shiftA, lda, strideA, batch_count, (T**)pivots_workArr));
         }
     }
 

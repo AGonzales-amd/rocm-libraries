@@ -1,5 +1,5 @@
 /************************************************************************
- * Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -312,9 +312,9 @@ rocblas_status rocsolver_sygvdx_hegvdx_template(rocblas_handle handle,
             rocblas_operation trans
                 = (uplo == rocblas_fill_upper ? rocblas_operation_conjugate_transpose
                                               : rocblas_operation_none);
-            rocblasCall_trmm(handle, rocblas_side_left, uplo, trans, rocblas_diagonal_non_unit, n,
-                             h_nev, &one, 0, B, shiftB, ldb, strideB, Z, shiftZ, ldz, strideZ,
-                             batch_count, (T**)work7_workArr);
+            THROW_IF_ROCBLAS_ERROR(rocblasCall_trmm(
+                handle, rocblas_side_left, uplo, trans, rocblas_diagonal_non_unit, n, h_nev, &one, 0,
+                B, shiftB, ldb, strideB, Z, shiftZ, ldz, strideZ, batch_count, (T**)work7_workArr));
         }
     }
 

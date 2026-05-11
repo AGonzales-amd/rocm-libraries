@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     December 2016
- * Copyright (C) 2019-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -242,8 +242,9 @@ void rocsolver_getri_getMemorySize(const rocblas_int n,
 
     // requirements for calling TRSM
     rocblas_int nn = (n % 128 != 0) ? n : n + 1;
-    rocblasCall_trsm_mem<BATCHED, T>(rocblas_side_right, rocblas_operation_none, nn, blk + 1, 1, 1,
-                                     batch_count, &w1a, &w2a, &w3a, &w4a);
+    THROW_IF_ROCBLAS_ERROR(rocblasCall_trsm_mem<BATCHED, T>(rocblas_side_right,
+                                                            rocblas_operation_none, nn, blk + 1, 1,
+                                                            1, batch_count, &w1a, &w2a, &w3a, &w4a));
 
     *size_work1 = std::max(w1a, w1b);
     *size_work2 = std::max(w2a, w2b);
@@ -387,10 +388,11 @@ rocblas_status rocsolver_getri_template(rocblas_handle handle,
                            tmpcopy, j + jb, ldw, strideW, &one, A, shiftA + idx2D(0, j, lda), lda,
                            strideA, batch_count, workArr);
 
-        rocblasCall_trsm(handle, rocblas_side_right, rocblas_fill_lower, rocblas_operation_none,
-                         rocblas_diagonal_unit, n, jb, &one, tmpcopy, j, ldw, strideW, A,
-                         shiftA + idx2D(0, j, lda), lda, strideA, batch_count, optim_mem, work1,
-                         work2, work3, work4, workArr);
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_trsm(handle, rocblas_side_right, rocblas_fill_lower,
+                                                rocblas_operation_none, rocblas_diagonal_unit, n,
+                                                jb, &one, tmpcopy, j, ldw, strideW, A,
+                                                shiftA + idx2D(0, j, lda), lda, strideA, batch_count,
+                                                optim_mem, work1, work2, work3, work4, workArr));
     }
 
     // apply pivoting (column interchanges)

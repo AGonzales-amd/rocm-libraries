@@ -4,7 +4,7 @@
  *     Univ. of Tennessee, Univ. of California Berkeley,
  *     Univ. of Colorado Denver and NAG Ltd..
  *     November 2017
- * Copyright (C) 2019-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -281,8 +281,8 @@ rocblas_status rocsolver_larfg_template(rocblas_handle handle,
     rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device);
 
     // compute squared norm of x
-    rocblasCall_dot<COMPLEX, T>(handle, n - 1, x, shiftx, incx, stridex, x, shiftx, incx, stridex,
-                                batch_count, norms, work);
+    THROW_IF_ROCBLAS_ERROR(rocblasCall_dot<COMPLEX, T>(
+        handle, n - 1, x, shiftx, incx, stridex, x, shiftx, incx, stridex, batch_count, norms, work));
 
     // set value of tau and beta and scalling factor for vector x
     // alpha <- beta, norms <- scaling
@@ -290,7 +290,8 @@ rocblas_status rocsolver_larfg_template(rocblas_handle handle,
                             strideP, norms, alpha, shifta, stridex, beta, shiftb, strideb);
 
     // compute vector v=x*norms
-    rocblasCall_scal<T>(handle, n - 1, norms, 1, x, shiftx, incx, stridex, batch_count);
+    THROW_IF_ROCBLAS_ERROR(
+        rocblasCall_scal<T>(handle, n - 1, norms, 1, x, shiftx, incx, stridex, batch_count));
 
     rocblas_set_pointer_mode(handle, old_mode);
     return rocblas_status_success;

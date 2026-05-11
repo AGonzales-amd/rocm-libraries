@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2019-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -103,9 +103,12 @@ rocblas_status rocsolver_ger(rocblas_handle handle,
         return rocblas_status_success;
 
     if(inca == 1)
-        return rocblasCall_ger<CONJ, T>(handle, m, n, alpha, stridea, x, shiftX, incx, strideX, y,
-                                        shiftY, incy, strideY, A, shiftA, lda, strideA, batch_count,
-                                        work);
+    {
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_ger<CONJ, T>(handle, m, n, alpha, stridea, x, shiftX,
+                                                        incx, strideX, y, shiftY, incy, strideY, A,
+                                                        shiftA, lda, strideA, batch_count, work));
+        return rocblas_status_success;
+    }
 
     // TODO: add interleaved support for conjugation
     if(CONJ)

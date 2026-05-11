@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2019-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -787,8 +787,9 @@ rocblas_status rocsolver_trsm_mem(const rocblas_side side,
         mm = (m % 128 != 0) ? m : m + 1;
     }
 
-    return rocblasCall_trsm_mem<BATCHED, T>(side, trans, mm, n, lda, ldb, batch_count, size_work1,
-                                            size_work2, size_work3, size_work4);
+    THROW_IF_ROCBLAS_ERROR(rocblasCall_trsm_mem<BATCHED, T>(
+        side, trans, mm, n, lda, ldb, batch_count, size_work1, size_work2, size_work3, size_work4));
+    return rocblas_status_success;
 }
 
 /** Internal TRSM (lower case):
@@ -857,9 +858,10 @@ rocblas_status rocsolver_trsm_lower(rocblas_handle handle,
 #ifndef USE_INTERNAL_TRSM
     if(blk == 0)
     {
-        return rocblasCall_trsm(handle, side, rocblas_fill_lower, trans, diag, m, n, &one, A,
-                                shiftA, lda, strideA, B, shiftB, ldb, strideB, batch_count,
-                                optim_mem, work1, work2, work3, work4);
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_trsm(
+            handle, side, rocblas_fill_lower, trans, diag, m, n, &one, A, shiftA, lda, strideA, B,
+            shiftB, ldb, strideB, batch_count, optim_mem, work1, work2, work3, work4));
+        return rocblas_status_success;
     }
 #endif
 
@@ -1120,9 +1122,10 @@ rocblas_status rocsolver_trsm_upper(rocblas_handle handle,
 #ifndef USE_INTERNAL_TRSM
     if(blk == 0)
     {
-        return rocblasCall_trsm(handle, side, rocblas_fill_upper, trans, diag, m, n, &one, A,
-                                shiftA, lda, strideA, B, shiftB, ldb, strideB, batch_count,
-                                optim_mem, work1, work2, work3, work4);
+        THROW_IF_ROCBLAS_ERROR(rocblasCall_trsm(
+            handle, side, rocblas_fill_upper, trans, diag, m, n, &one, A, shiftA, lda, strideA, B,
+            shiftB, ldb, strideB, batch_count, optim_mem, work1, work2, work3, work4));
+        return rocblas_status_success;
     }
 #endif
 
