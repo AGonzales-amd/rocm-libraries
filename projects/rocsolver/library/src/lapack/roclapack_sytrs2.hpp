@@ -1124,7 +1124,6 @@ static inline rocblas_status rocsolver_sytrs2_template(rocblas_handle handle,
     // -------------------------------------------------
     // solve linear system with converted storage format
     // -------------------------------------------------
-    rocblas_status istat_sytrs1 = rocblas_status_success;
     {
         auto const pfree_save = pfree;
         size_t size_remain = (pwork + size_work) - pfree;
@@ -1134,9 +1133,9 @@ static inline rocblas_status rocsolver_sytrs2_template(rocblas_handle handle,
         rocblas_get_pointer_mode(handle, &old_mode);
         rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host);
 
-        istat_sytrs1 = sytrs2_inner_template<T, I>(handle, is_upper, n, nrhs, A, shiftA, lda,
-                                                   strideA, ipiv, strideP, E, strideE, B, shiftB,
-                                                   ldb, strideB, batch_count, pfree, size_remain);
+        THROW_IF_ROCBLAS_ERROR(sytrs2_inner_template<T, I>(
+            handle, is_upper, n, nrhs, A, shiftA, lda, strideA, ipiv, strideP, E, strideE, B,
+            shiftB, ldb, strideB, batch_count, pfree, size_remain));
 
         rocblas_set_pointer_mode(handle, old_mode);
 
@@ -1148,27 +1147,16 @@ static inline rocblas_status rocsolver_sytrs2_template(rocblas_handle handle,
     // even if sytrs1 has an error
     // ---------------
 
-    rocblas_status istat_syconv = rocblas_status_success;
     {
         auto const pfree_save = pfree;
 
         size_t const size_remain = (pwork + size_work) - pfree;
         bool is_convert = false;
-        istat_syconv = rocsolver_syconv_template<T, I>(
+        THROW_IF_ROCBLAS_ERROR(rocsolver_syconv_template<T, I>(
             handle, is_upper, is_convert = false, n, A, shiftA, lda, strideA, ipiv, strideP, E,
-            strideE, batch_count, (void*)pfree, size_remain);
+            strideE, batch_count, (void*)pfree, size_remain));
 
         pfree = pfree_save;
-    }
-
-    if(istat_sytrs1 != rocblas_status_success)
-    {
-        return (istat_sytrs1);
-    }
-
-    if(istat_syconv != rocblas_status_success)
-    {
-        return (istat_syconv);
     }
 
     return rocblas_status_success;

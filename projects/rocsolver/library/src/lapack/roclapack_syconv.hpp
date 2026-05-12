@@ -774,7 +774,7 @@ static rocblas_status rocsolver_syconv_template(rocblas_handle handle,
         return rocblas_status_success;
     };
 
-    ROCBLAS_CHECK(segmented_inclusive_scan_inplace(icount, n, batch_count));
+    THROW_IF_ROCBLAS_ERROR(segmented_inclusive_scan_inplace(icount, n, batch_count));
 
     // ----------------------------------------
     // NOTE: icount now contains the prefix sum

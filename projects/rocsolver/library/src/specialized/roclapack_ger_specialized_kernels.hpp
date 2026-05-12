@@ -112,7 +112,7 @@ rocblas_status rocsolver_ger(rocblas_handle handle,
 
     // TODO: add interleaved support for conjugation
     if(CONJ)
-        return rocblas_status_not_implemented;
+        THROW_IF_ROCBLAS_ERROR(rocblas_status_not_implemented);
 
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
