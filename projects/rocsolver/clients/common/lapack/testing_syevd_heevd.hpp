@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2021-2025 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2021-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,6 +34,7 @@
 #include "common/misc/norm.hpp"
 #include "common/misc/rocsolver.hpp"
 #include "common/misc/rocsolver_arguments.hpp"
+#include "common/misc/rocsolver_temp.hpp"
 #include "common/misc/rocsolver_test.hpp"
 #include "common/misc/rocsolver_timer.hpp"
 
@@ -633,7 +634,7 @@ void syevd_heevd_getError(const rocblas_handle handle,
 }
 
 template <bool STRIDED, typename T, typename Sd, typename Td, typename Id, typename Sh, typename Th, typename Ih>
-void syevd_heevd_getPerfData(const rocblas_handle handle,
+void syevd_heevd_getPerfData(const rocblas_local_handle& handle,
                              const rocblas_evect evect,
                              const rocblas_fill uplo,
                              const rocblas_int n,
@@ -704,6 +705,8 @@ void syevd_heevd_getPerfData(const rocblas_handle handle,
     hipStream_t stream;
     CHECK_ROCBLAS_ERROR(rocblas_get_stream(handle, &stream));
     rocsolver_timer timer;
+
+    rocsolver_temp::instance().set_target_temp(handle, 55, 58, 10);
 
     if(profile > 0)
     {

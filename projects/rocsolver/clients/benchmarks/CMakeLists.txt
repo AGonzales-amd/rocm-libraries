@@ -1,5 +1,5 @@
 # ##########################################################################
-# Copyright (C) 2016-2024 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2016-2026 Advanced Micro Devices, Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -52,6 +52,7 @@ target_link_libraries(rocsolver-bench PRIVATE
   rocsolver-common
   clients-common
   roc::rocsolver
+  amd_smi
 )
 if(NOT USE_HIPCXX)
   target_link_libraries(rocsolver-bench PRIVATE hip::device)

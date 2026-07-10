@@ -224,6 +224,7 @@ target_link_libraries(rocsolver-test PRIVATE
   $<$<PLATFORM_ID:Linux>:m>
   roc::rocsolver
   roc::rocblas
+  amd_smi
 )
 if(NOT USE_HIPCXX)
   target_link_libraries(rocsolver-test PRIVATE hip::device)

@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2018-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2018-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -83,6 +83,22 @@ public:
     operator const rocblas_handle&() const
     {
         return m_handle;
+    }
+
+    hipStream_t get_stream() const
+    {
+        hipStream_t stream;
+        (void)rocblas_get_stream(m_handle, &stream);
+        return stream;
+    }
+
+    const hipDeviceProp_t get_dev_props() const
+    {
+        int device;
+        (void)hipGetDevice(&device);
+        hipDeviceProp_t props;
+        (void)hipGetDeviceProperties(&props, device);
+        return props;
     }
 };
 

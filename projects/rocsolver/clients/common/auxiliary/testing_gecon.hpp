@@ -33,6 +33,7 @@
 #include "common/misc/norm.hpp"
 #include "common/misc/rocsolver.hpp"
 #include "common/misc/rocsolver_arguments.hpp"
+#include "common/misc/rocsolver_temp.hpp"
 #include "common/misc/rocsolver_test.hpp"
 #include "common/misc/rocsolver_timer.hpp"
 
@@ -166,7 +167,7 @@ void gecon_getError(const rocblas_handle handle,
 }
 
 template <typename T, typename I, typename S, typename Td, typename Sd, typename Th, typename Ih, typename Sh>
-void gecon_getPerfData(const rocblas_handle handle,
+void gecon_getPerfData(const rocblas_local_handle& handle,
                        const rocsolver_norm_type norm_type,
                        const I n,
                        Td& dA,
@@ -216,6 +217,8 @@ void gecon_getPerfData(const rocblas_handle handle,
     hipStream_t stream;
     CHECK_ROCBLAS_ERROR(rocblas_get_stream(handle, &stream));
     rocsolver_timer timer;
+
+    rocsolver_temp::instance().set_target_temp(handle, 55, 58, 10);
 
     if(profile > 0)
     {
