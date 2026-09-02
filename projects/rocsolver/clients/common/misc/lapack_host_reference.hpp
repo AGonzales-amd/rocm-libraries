@@ -617,6 +617,21 @@ void cpu_ormtr_unmtr(rocblas_side side,
                      T* work,
                      rocblas_int sizeW);
 
+template <typename T>
+void cpu_ormhr_unmhr(rocblas_side side,
+                     rocblas_operation trans,
+                     rocblas_int m,
+                     rocblas_int n,
+                     rocblas_int ilo,
+                     rocblas_int ihi,
+                     T* A,
+                     rocblas_int lda,
+                     T* tau,
+                     T* C,
+                     rocblas_int ldc,
+                     T* work,
+                     rocblas_int sizeW);
+
 template <typename T, typename S>
 void cpu_gebd2(rocblas_int m, rocblas_int n, T* A, rocblas_int lda, S* D, S* E, T* tauq, T* taup, T* work);
 

@@ -44,13 +44,13 @@ void gehd2_gehrd_checkBadArgs(const rocblas_handle handle,
                               T dA,
                               const rocblas_int lda,
                               const rocblas_stride stA,
-                              U dIpiv,
+                              U dTau,
                               const rocblas_stride stP,
                               const rocblas_int bc)
 {
     // handle
     EXPECT_ROCBLAS_STATUS(
-        rocsolver_gehd2_gehrd(STRIDED, GEHRD, nullptr, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc),
+        rocsolver_gehd2_gehrd(STRIDED, GEHRD, nullptr, n, ilo, ihi, dA, lda, stA, dTau, stP, bc),
         rocblas_status_invalid_handle);
 
     // values
@@ -59,12 +59,12 @@ void gehd2_gehrd_checkBadArgs(const rocblas_handle handle,
     // sizes (only check batch_count if applicable)
     if(STRIDED)
         EXPECT_ROCBLAS_STATUS(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, dA, lda,
-                                                    stA, dIpiv, stP, (rocblas_int)-1),
+                                                    stA, dTau, stP, (rocblas_int)-1),
                               rocblas_status_invalid_size);
 
     // pointers
     EXPECT_ROCBLAS_STATUS(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, (T) nullptr,
-                                                lda, stA, dIpiv, stP, bc),
+                                                lda, stA, dTau, stP, bc),
                           rocblas_status_invalid_pointer);
     EXPECT_ROCBLAS_STATUS(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, dA, lda, stA,
                                                 (U) nullptr, stP, bc),
@@ -78,7 +78,7 @@ void gehd2_gehrd_checkBadArgs(const rocblas_handle handle,
     // quick return with zero batch_count if applicable
     if(STRIDED)
         EXPECT_ROCBLAS_STATUS(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, dA, lda,
-                                                    stA, dIpiv, stP, (rocblas_int)0),
+                                                    stA, dTau, stP, (rocblas_int)0),
                               rocblas_status_success);
 }
 
@@ -100,25 +100,25 @@ void testing_gehd2_gehrd_bad_arg()
     {
         // memory allocations
         device_batch_vector<T> dA(1, 1, 1);
-        device_strided_batch_vector<T> dIpiv(1, 1, 1, 1);
+        device_strided_batch_vector<T> dTau(1, 1, 1, 1);
         CHECK_HIP_ERROR(dA.memcheck());
-        CHECK_HIP_ERROR(dIpiv.memcheck());
+        CHECK_HIP_ERROR(dTau.memcheck());
 
         // check bad arguments
         gehd2_gehrd_checkBadArgs<STRIDED, GEHRD>(handle, n, ilo, ihi, dA.data(), lda, stA,
-                                                 dIpiv.data(), stP, bc);
+                                                 dTau.data(), stP, bc);
     }
     else
     {
         // memory allocations
         device_strided_batch_vector<T> dA(1, 1, 1, 1);
-        device_strided_batch_vector<T> dIpiv(1, 1, 1, 1);
+        device_strided_batch_vector<T> dTau(1, 1, 1, 1);
         CHECK_HIP_ERROR(dA.memcheck());
-        CHECK_HIP_ERROR(dIpiv.memcheck());
+        CHECK_HIP_ERROR(dTau.memcheck());
 
         // check bad arguments
         gehd2_gehrd_checkBadArgs<STRIDED, GEHRD>(handle, n, ilo, ihi, dA.data(), lda, stA,
-                                                 dIpiv.data(), stP, bc);
+                                                 dTau.data(), stP, bc);
     }
 #endif
 }
@@ -131,11 +131,11 @@ void gehd2_gehrd_initData(const rocblas_handle handle,
                           Td& dA,
                           const rocblas_int lda,
                           const rocblas_stride stA,
-                          Ud& dIpiv,
+                          Ud& dTau,
                           const rocblas_stride stP,
                           const rocblas_int bc,
                           Th& hA,
-                          Uh& hIpiv)
+                          Uh& hTau)
 {
     if(CPU)
     {
@@ -166,7 +166,43 @@ void gehd2_gehrd_initData(const rocblas_handle handle,
     }
 }
 
-template <bool STRIDED, bool GEHRD, typename T, typename Td, typename Ud, typename Th, typename Uh>
+// copies the value of n x n Hessenberg matrix out of A
+template <typename T, typename Th>
+std::vector<std::vector<T>> gehd2_gehrd_getH(const rocblas_int n,
+                                             const rocblas_int ilo,
+                                             const rocblas_int ihi,
+                                             Th& A,
+                                             const rocblas_int lda,
+                                             const rocblas_stride stA,
+                                             const rocblas_int bc)
+{
+    std::vector<std::vector<T>> H(bc, std::vector<T>(n * n, 0));
+    for(rocblas_int b = 0; b < bc; ++b)
+    {
+        for(rocblas_int j = 0; j < n; ++j)
+        {
+            for(rocblas_int i = 0; i < n; ++i)
+            {
+                if((i >= ilo - 1 && i < ihi && j >= ilo - 1 && j < ihi) || i <= j)
+                {
+                    // Copy elements within interval [ilo-1, ihi-1] and upper diagonal elements outside the interval.
+                    H[b][i + j * n] = A[b][i + j * lda];
+                }
+            }
+        }
+    }
+
+    return std::move(H);
+}
+
+template <bool STRIDED,
+          bool GEHRD,
+          typename T,
+          typename Td,
+          typename Ud,
+          typename Th,
+          typename Uh,
+          bool COMPLEX = rocblas_is_complex<T>>
 void gehd2_gehrd_getError(const rocblas_handle handle,
                           const rocblas_int n,
                           const rocblas_int ilo,
@@ -174,37 +210,38 @@ void gehd2_gehrd_getError(const rocblas_handle handle,
                           Td& dA,
                           const rocblas_int lda,
                           const rocblas_stride stA,
-                          Ud& dIpiv,
+                          Ud& dTau,
                           const rocblas_stride stP,
                           const rocblas_int bc,
                           Th& hA,
                           Th& hARes,
-                          Uh& hIpiv,
-                          Uh& hIpivRes,
+                          Uh& hTau,
+                          Uh& hTauRes,
                           double* max_err)
 {
     std::vector<T> hW(n);
 
     // input data initialization
-    gehd2_gehrd_initData<true, true, T>(handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc, hA, hIpiv);
+    gehd2_gehrd_initData<true, true, T>(handle, n, ilo, ihi, dA, lda, stA, dTau, stP, bc, hA, hTau);
 
     // execute computations
     // GPU lapack
     CHECK_ROCBLAS_ERROR(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, dA.data(), lda,
-                                              stA, dIpiv.data(), stP, bc));
+                                              stA, dTau.data(), stP, bc));
     CHECK_HIP_ERROR(hARes.transfer_from(dA));
-    CHECK_HIP_ERROR(hIpivRes.transfer_from(dIpiv));
+    CHECK_HIP_ERROR(hTauRes.transfer_from(dTau));
 
     // CPU lapack
     for(rocblas_int b = 0; b < bc; ++b)
     {
-        GEHRD ? cpu_gehrd(n, ilo, ihi, hA[b], lda, hIpiv[b], hW.data(), n)
-              : cpu_gehd2(n, ilo, ihi, hA[b], lda, hIpiv[b], hW.data());
+        GEHRD ? cpu_gehrd(n, ilo, ihi, hA[b], lda, hTau[b], hW.data(), n)
+              : cpu_gehd2(n, ilo, ihi, hA[b], lda, hTau[b], hW.data());
     }
 
-    // error is ||hA - hARes|| / ||hA||
-    // (THIS DOES NOT ACCOUNT FOR NUMERICAL REPRODUCIBILITY ISSUES.
-    // IT MIGHT BE REVISITED IN THE FUTURE)
+    auto H = gehd2_gehrd_getH<T>(n, ilo, ihi, hA, lda, stA, bc);
+    auto HRes = gehd2_gehrd_getH<T>(n, ilo, ihi, hARes, lda, stA, bc);
+
+    // error is ||QHQ^H - Qres Hres Qres^H|| / ||QHQ^H||
     double err;
     *max_err = 0;
     for(rocblas_int b = 0; b < bc; ++b)
@@ -212,7 +249,27 @@ void gehd2_gehrd_getError(const rocblas_handle handle,
         err = norm_error('F', n, n, lda, hA[b], hARes[b]);
         *max_err = err > *max_err ? err : *max_err;
 
-        err = norm_error('F', 1, ihi - ilo, 1, hIpiv[b] + ilo - 1, hIpivRes[b] + ilo - 1);
+        // Compare tau values
+        err = norm_error('F', 1, ihi - ilo, 1, hTau[b] + ilo - 1, hTauRes[b] + ilo - 1);
+        *max_err = err > *max_err ? err : *max_err;
+
+        rocblas_operation trans
+            = COMPLEX ? rocblas_operation_conjugate_transpose : rocblas_operation_transpose;
+
+        // QHQ^H
+        cpu_ormhr_unmhr(rocblas_side_left, rocblas_operation_none, n, n, ilo, ihi, hA[b], lda,
+                        hTau[b], H[b].data(), n, hW.data(), n);
+        cpu_ormhr_unmhr(rocblas_side_right, trans, n, n, ilo, ihi, hA[b], lda, hTau[b], H[b].data(),
+                        n, hW.data(), n);
+
+        // Qres Hres Qres^H
+        cpu_ormhr_unmhr(rocblas_side_left, rocblas_operation_none, n, n, ilo, ihi, hARes[b], lda,
+                        hTauRes[b], HRes[b].data(), n, hW.data(), n);
+        cpu_ormhr_unmhr(rocblas_side_right, trans, n, n, ilo, ihi, hARes[b], lda, hTauRes[b],
+                        HRes[b].data(), n, hW.data(), n);
+
+        // ||QHQ^H - Qres Hres Qres^H|| / ||QHQ^H||
+        err = norm_error('F', n, n, lda, H[b].data(), HRes[b].data());
         *max_err = err > *max_err ? err : *max_err;
     }
 }
@@ -225,11 +282,11 @@ void gehd2_gehrd_getPerfData(const rocblas_handle handle,
                              Td& dA,
                              const rocblas_int lda,
                              const rocblas_stride stA,
-                             Ud& dIpiv,
+                             Ud& dTau,
                              const rocblas_stride stP,
                              const rocblas_int bc,
                              Th& hA,
-                             Uh& hIpiv,
+                             Uh& hTau,
                              double* gpu_time_used,
                              double* cpu_time_used,
                              const rocblas_int hot_calls,
@@ -241,30 +298,29 @@ void gehd2_gehrd_getPerfData(const rocblas_handle handle,
 
     if(!perf)
     {
-        gehd2_gehrd_initData<true, false, T>(handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc, hA,
-                                             hIpiv);
+        gehd2_gehrd_initData<true, false, T>(handle, n, ilo, ihi, dA, lda, stA, dTau, stP, bc, hA,
+                                             hTau);
 
         // cpu-lapack performance (only if not in perf mode)
         *cpu_time_used = get_time_us_no_sync();
         for(rocblas_int b = 0; b < bc; ++b)
         {
-            GEHRD ? cpu_gehrd(n, ilo, ihi, hA[b], lda, hIpiv[b], hW.data(), n)
-                  : cpu_gehd2(n, ilo, ihi, hA[b], lda, hIpiv[b], hW.data());
+            GEHRD ? cpu_gehrd(n, ilo, ihi, hA[b], lda, hTau[b], hW.data(), n)
+                  : cpu_gehd2(n, ilo, ihi, hA[b], lda, hTau[b], hW.data());
         }
         *cpu_time_used = get_time_us_no_sync() - *cpu_time_used;
     }
 
-    gehd2_gehrd_initData<true, false, T>(handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc, hA,
-                                         hIpiv);
+    gehd2_gehrd_initData<true, false, T>(handle, n, ilo, ihi, dA, lda, stA, dTau, stP, bc, hA, hTau);
 
     // cold calls
     for(int iter = 0; iter < 2; iter++)
     {
-        gehd2_gehrd_initData<false, true, T>(handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc, hA,
-                                             hIpiv);
+        gehd2_gehrd_initData<false, true, T>(handle, n, ilo, ihi, dA, lda, stA, dTau, stP, bc, hA,
+                                             hTau);
 
         CHECK_ROCBLAS_ERROR(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, dA.data(),
-                                                  lda, stA, dIpiv.data(), stP, bc));
+                                                  lda, stA, dTau.data(), stP, bc));
     }
 
     // gpu-lapack performance
@@ -284,12 +340,12 @@ void gehd2_gehrd_getPerfData(const rocblas_handle handle,
 
     for(rocblas_int iter = 0; iter < hot_calls; iter++)
     {
-        gehd2_gehrd_initData<false, true, T>(handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc, hA,
-                                             hIpiv);
+        gehd2_gehrd_initData<false, true, T>(handle, n, ilo, ihi, dA, lda, stA, dTau, stP, bc, hA,
+                                             hTau);
 
         timer.start(stream);
-        rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, dA.data(), lda, stA,
-                              dIpiv.data(), stP, bc);
+        rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi, dA.data(), lda, stA, dTau.data(),
+                              stP, bc);
         timer.end(stream);
     }
     *gpu_time_used = timer.get_combined();
@@ -387,20 +443,20 @@ void testing_gehd2_gehrd(Arguments& argus)
         // memory allocations
         host_batch_vector<T> hA(size_A, 1, bc);
         host_batch_vector<T> hARes(size_ARes, 1, bc);
-        host_strided_batch_vector<T> hIpiv(size_P, 1, stP, bc);
-        host_strided_batch_vector<T> hIpivRes(size_PRes, 1, stP, bc);
+        host_strided_batch_vector<T> hTau(size_P, 1, stP, bc);
+        host_strided_batch_vector<T> hTauRes(size_PRes, 1, stP, bc);
         device_batch_vector<T> dA(size_A, 1, bc);
-        device_strided_batch_vector<T> dIpiv(size_P, 1, stP, bc);
+        device_strided_batch_vector<T> dTau(size_P, 1, stP, bc);
         if(size_A)
             CHECK_HIP_ERROR(dA.memcheck());
         if(size_P)
-            CHECK_HIP_ERROR(dIpiv.memcheck());
+            CHECK_HIP_ERROR(dTau.memcheck());
 
         // check quick return
         if(n == 0 || bc == 0)
         {
             EXPECT_ROCBLAS_STATUS(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi,
-                                                        dA.data(), lda, stA, dIpiv.data(), stP, bc),
+                                                        dA.data(), lda, stA, dTau.data(), stP, bc),
                                   rocblas_status_success);
             if(argus.timing)
                 rocsolver_bench_inform(inform_quick_return);
@@ -410,13 +466,13 @@ void testing_gehd2_gehrd(Arguments& argus)
 
         // check computations
         if(argus.unit_check || argus.norm_check)
-            gehd2_gehrd_getError<STRIDED, GEHRD, T>(handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP,
-                                                    bc, hA, hARes, hIpiv, hIpivRes, &max_error);
+            gehd2_gehrd_getError<STRIDED, GEHRD, T>(handle, n, ilo, ihi, dA, lda, stA, dTau, stP,
+                                                    bc, hA, hARes, hTau, hTauRes, &max_error);
 
         // collect performance data
         if(argus.timing && hot_calls > 0)
             gehd2_gehrd_getPerfData<STRIDED, GEHRD, T>(
-                handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc, hA, hIpiv, &gpu_time_used,
+                handle, n, ilo, ihi, dA, lda, stA, dTau, stP, bc, hA, hTau, &gpu_time_used,
                 &cpu_time_used, hot_calls, argus.profile, argus.profile_kernels, argus.perf);
     }
     else
@@ -424,20 +480,20 @@ void testing_gehd2_gehrd(Arguments& argus)
         // memory allocations
         host_strided_batch_vector<T> hA(size_A, 1, stA, bc);
         host_strided_batch_vector<T> hARes(size_ARes, 1, stARes, bc);
-        host_strided_batch_vector<T> hIpiv(size_P, 1, stP, bc);
-        host_strided_batch_vector<T> hIpivRes(size_PRes, 1, stP, bc);
+        host_strided_batch_vector<T> hTau(size_P, 1, stP, bc);
+        host_strided_batch_vector<T> hTauRes(size_PRes, 1, stP, bc);
         device_strided_batch_vector<T> dA(size_A, 1, stA, bc);
-        device_strided_batch_vector<T> dIpiv(size_P, 1, stP, bc);
+        device_strided_batch_vector<T> dTau(size_P, 1, stP, bc);
         if(size_A)
             CHECK_HIP_ERROR(dA.memcheck());
         if(size_P)
-            CHECK_HIP_ERROR(dIpiv.memcheck());
+            CHECK_HIP_ERROR(dTau.memcheck());
 
         // check quick return
         if(n == 0 || bc == 0)
         {
             EXPECT_ROCBLAS_STATUS(rocsolver_gehd2_gehrd(STRIDED, GEHRD, handle, n, ilo, ihi,
-                                                        dA.data(), lda, stA, dIpiv.data(), stP, bc),
+                                                        dA.data(), lda, stA, dTau.data(), stP, bc),
                                   rocblas_status_success);
             if(argus.timing)
                 rocsolver_bench_inform(inform_quick_return);
@@ -447,13 +503,13 @@ void testing_gehd2_gehrd(Arguments& argus)
 
         // check computations
         if(argus.unit_check || argus.norm_check)
-            gehd2_gehrd_getError<STRIDED, GEHRD, T>(handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP,
-                                                    bc, hA, hARes, hIpiv, hIpivRes, &max_error);
+            gehd2_gehrd_getError<STRIDED, GEHRD, T>(handle, n, ilo, ihi, dA, lda, stA, dTau, stP,
+                                                    bc, hA, hARes, hTau, hTauRes, &max_error);
 
         // collect performance data
         if(argus.timing && hot_calls > 0)
             gehd2_gehrd_getPerfData<STRIDED, GEHRD, T>(
-                handle, n, ilo, ihi, dA, lda, stA, dIpiv, stP, bc, hA, hIpiv, &gpu_time_used,
+                handle, n, ilo, ihi, dA, lda, stA, dTau, stP, bc, hA, hTau, &gpu_time_used,
                 &cpu_time_used, hot_calls, argus.profile, argus.profile_kernels, argus.perf);
     }
 

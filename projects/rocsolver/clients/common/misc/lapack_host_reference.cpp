@@ -1784,6 +1784,63 @@ void zunmtr_(char* side,
              int* sizeW,
              int* info);
 
+void sormhr_(char* side,
+             char* trans,
+             int* m,
+             int* n,
+             int* ilo,
+             int* ihi,
+             float* A,
+             int* lda,
+             float* tau,
+             float* C,
+             int* ldc,
+             float* work,
+             int* sizeW,
+             int* info);
+void dormhr_(char* side,
+             char* trans,
+             int* m,
+             int* n,
+             int* ilo,
+             int* ihi,
+             double* A,
+             int* lda,
+             double* tau,
+             double* C,
+             int* ldc,
+             double* work,
+             int* sizeW,
+             int* info);
+void cunmhr_(char* side,
+             char* trans,
+             int* m,
+             int* n,
+             int* ilo,
+             int* ihi,
+             rocblas_float_complex* A,
+             int* lda,
+             rocblas_float_complex* tau,
+             rocblas_float_complex* C,
+             int* ldc,
+             rocblas_float_complex* work,
+             int* sizeW,
+             int* info);
+void zunmhr_(char* side,
+             char* trans,
+             int* m,
+             int* n,
+             int* ilo,
+             int* ihi,
+             rocblas_double_complex* A,
+             int* lda,
+             rocblas_double_complex* tau,
+             rocblas_double_complex* C,
+             int* ldc,
+             rocblas_double_complex* work,
+             int* sizeW,
+             int* info);
+
 void sgebd2_(int* m,
              int* n,
              float* A,
@@ -5358,6 +5415,95 @@ void cpu_ormtr_unmtr<rocblas_double_complex>(rocblas_side side,
     char transC = rocblas2char_operation(trans);
 
     zunmtr_(&sideC, &uploC, &transC, &m, &n, A, &lda, ipiv, C, &ldc, work, &lwork, &info);
+}
+
+// ormhr & unmhr
+template <>
+void cpu_ormhr_unmhr<float>(rocblas_side side,
+                            rocblas_operation trans,
+                            rocblas_int m,
+                            rocblas_int n,
+                            rocblas_int ilo,
+                            rocblas_int ihi,
+                            float* A,
+                            rocblas_int lda,
+                            float* tau,
+                            float* C,
+                            rocblas_int ldc,
+                            float* work,
+                            rocblas_int lwork)
+{
+    int info;
+    char sideC = rocblas2char_side(side);
+    char transC = rocblas2char_operation(trans);
+
+    sormhr_(&sideC, &transC, &m, &n, &ilo, &ihi, A, &lda, tau, C, &ldc, work, &lwork, &info);
+}
+
+template <>
+void cpu_ormhr_unmhr<double>(rocblas_side side,
+                             rocblas_operation trans,
+                             rocblas_int m,
+                             rocblas_int n,
+                             rocblas_int ilo,
+                             rocblas_int ihi,
+                             double* A,
+                             rocblas_int lda,
+                             double* tau,
+                             double* C,
+                             rocblas_int ldc,
+                             double* work,
+                             rocblas_int lwork)
+{
+    int info;
+    char sideC = rocblas2char_side(side);
+    char transC = rocblas2char_operation(trans);
+
+    dormhr_(&sideC, &transC, &m, &n, &ilo, &ihi, A, &lda, tau, C, &ldc, work, &lwork, &info);
+}
+
+template <>
+void cpu_ormhr_unmhr<rocblas_float_complex>(rocblas_side side,
+                                            rocblas_operation trans,
+                                            rocblas_int m,
+                                            rocblas_int n,
+                                            rocblas_int ilo,
+                                            rocblas_int ihi,
+                                            rocblas_float_complex* A,
+                                            rocblas_int lda,
+                                            rocblas_float_complex* tau,
+                                            rocblas_float_complex* C,
+                                            rocblas_int ldc,
+                                            rocblas_float_complex* work,
+                                            rocblas_int lwork)
+{
+    int info;
+    char sideC = rocblas2char_side(side);
+    char transC = rocblas2char_operation(trans);
+
+    cunmhr_(&sideC, &transC, &m, &n, &ilo, &ihi, A, &lda, tau, C, &ldc, work, &lwork, &info);
+}
+
+template <>
+void cpu_ormhr_unmhr<rocblas_double_complex>(rocblas_side side,
+                                             rocblas_operation trans,
+                                             rocblas_int m,
+                                             rocblas_int n,
+                                             rocblas_int ilo,
+                                             rocblas_int ihi,
+                                             rocblas_double_complex* A,
+                                             rocblas_int lda,
+                                             rocblas_double_complex* tau,
+                                             rocblas_double_complex* C,
+                                             rocblas_int ldc,
+                                             rocblas_double_complex* work,
+                                             rocblas_int lwork)
+{
+    int info;
+    char sideC = rocblas2char_side(side);
+    char transC = rocblas2char_operation(trans);
+
+    zunmhr_(&sideC, &transC, &m, &n, &ilo, &ihi, A, &lda, tau, C, &ldc, work, &lwork, &info);
 }
 
 // gemv
