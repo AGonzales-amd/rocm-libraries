@@ -246,9 +246,6 @@ void gehd2_gehrd_getError(const rocblas_handle handle,
     *max_err = 0;
     for(rocblas_int b = 0; b < bc; ++b)
     {
-        err = norm_error('F', n, n, lda, hA[b], hARes[b]);
-        *max_err = err > *max_err ? err : *max_err;
-
         // Compare tau values
         err = norm_error('F', 1, ihi - ilo, 1, hTau[b] + ilo - 1, hTauRes[b] + ilo - 1);
         *max_err = err > *max_err ? err : *max_err;
@@ -269,7 +266,7 @@ void gehd2_gehrd_getError(const rocblas_handle handle,
                         HRes[b].data(), n, hW.data(), n);
 
         // ||QHQ^H - Qres Hres Qres^H|| / ||QHQ^H||
-        err = norm_error('F', n, n, lda, H[b].data(), HRes[b].data());
+        err = norm_error('F', n, n, n, H[b].data(), HRes[b].data());
         *max_err = err > *max_err ? err : *max_err;
     }
 }
@@ -514,9 +511,9 @@ void testing_gehd2_gehrd(Arguments& argus)
     }
 
     // validate results for rocsolver-test
-    // using 12 * n * machine_precision as tolerance
+    // using 4 * n * machine_precision as tolerance
     if(argus.unit_check)
-        ROCSOLVER_TEST_CHECK(T, max_error, 12 * n);
+        ROCSOLVER_TEST_CHECK(T, max_error, 4 * n);
 
     // output results for rocsolver-bench
     if(argus.timing)
