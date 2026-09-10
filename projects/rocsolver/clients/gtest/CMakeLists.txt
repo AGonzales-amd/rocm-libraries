@@ -97,6 +97,7 @@ set(rocauxiliary_test_source
   auxiliary/orglx_unglx_gtest.cpp
   auxiliary/orgxl_ungxl_gtest.cpp
   auxiliary/orgbr_ungbr_gtest.cpp
+  auxiliary/orghr_unghr_gtest.cpp
   auxiliary/orgtr_ungtr_gtest.cpp
   auxiliary/ormxr_unmxr_gtest.cpp
   auxiliary/ormlx_unmlx_gtest.cpp
