@@ -259,6 +259,9 @@ endif()
 if(ROCSOLVER_ENABLE_EIG_2STAGE)
   target_compile_definitions(rocsolver-test PRIVATE ROCSOLVER_ENABLE_EIG_2STAGE)
 endif()
+if(ROCSOLVER_ENABLE_XXGHR)
+  target_compile_definitions(rocsolver-test PRIVATE ROCSOLVER_ENABLE_XXGHR)
+endif()
 
 add_test(
   NAME rocsolver-test

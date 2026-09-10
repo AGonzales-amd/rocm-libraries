@@ -535,6 +535,9 @@ endif()
 if(ROCSOLVER_ENABLE_EIG_2STAGE)
   target_compile_definitions(rocsolver PRIVATE ROCSOLVER_ENABLE_EIG_2STAGE)
 endif()
+if(ROCSOLVER_ENABLE_XXGHR)
+  target_compile_definitions(rocsolver PRIVATE ROCSOLVER_ENABLE_XXGHR)
+endif()
 
 target_compile_definitions(rocsolver PRIVATE
   ROCM_USE_FLOAT16

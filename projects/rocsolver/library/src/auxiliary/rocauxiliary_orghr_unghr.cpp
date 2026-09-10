@@ -158,7 +158,11 @@ ROCSOLVER_EXPORT rocblas_status rocsolver_sorghr(rocblas_handle handle,
                                                  const rocblas_int lda,
                                                  float* tau)
 {
+#if defined(ROCSOLVER_ENABLE_XXGHR)
     return rocsolver::rocsolver_orghr_unghr_impl<float>(handle, n, ilo, ihi, A, lda, tau);
+#else
+    return rocblas_status_not_implemented;
+#endif
 }
 
 ROCSOLVER_EXPORT rocblas_status rocsolver_dorghr(rocblas_handle handle,
@@ -169,7 +173,11 @@ ROCSOLVER_EXPORT rocblas_status rocsolver_dorghr(rocblas_handle handle,
                                                  const rocblas_int lda,
                                                  double* tau)
 {
+#if defined(ROCSOLVER_ENABLE_XXGHR)
     return rocsolver::rocsolver_orghr_unghr_impl<double>(handle, n, ilo, ihi, A, lda, tau);
+#else
+    return rocblas_status_not_implemented;
+#endif
 }
 //! @}
 
@@ -219,8 +227,12 @@ ROCSOLVER_EXPORT rocblas_status rocsolver_cunghr(rocblas_handle handle,
                                                  const rocblas_int lda,
                                                  rocblas_float_complex* tau)
 {
+#if defined(ROCSOLVER_ENABLE_XXGHR)
     return rocsolver::rocsolver_orghr_unghr_impl<rocblas_float_complex>(handle, n, ilo, ihi, A, lda,
                                                                         tau);
+#else
+    return rocblas_status_not_implemented;
+#endif
 }
 
 ROCSOLVER_EXPORT rocblas_status rocsolver_zunghr(rocblas_handle handle,
@@ -231,8 +243,12 @@ ROCSOLVER_EXPORT rocblas_status rocsolver_zunghr(rocblas_handle handle,
                                                  const rocblas_int lda,
                                                  rocblas_double_complex* tau)
 {
+#if defined(ROCSOLVER_ENABLE_XXGHR)
     return rocsolver::rocsolver_orghr_unghr_impl<rocblas_double_complex>(handle, n, ilo, ihi, A,
                                                                          lda, tau);
+#else
+    return rocblas_status_not_implemented;
+#endif
 }
 //! @}
 

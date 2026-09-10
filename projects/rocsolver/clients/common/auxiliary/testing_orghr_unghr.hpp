@@ -70,6 +70,7 @@ void testing_orghr_unghr_bad_arg()
     rocblas_int ihi = 2;
     rocblas_int lda = 2;
 
+#ifdef ROCSOLVER_ENABLE_XXGHR
     // memory allocation
     device_strided_batch_vector<T> dA(1, 1, 1, 1);
     device_strided_batch_vector<T> dTau(1, 1, 1, 1);
@@ -78,6 +79,7 @@ void testing_orghr_unghr_bad_arg()
 
     // check bad arguments
     orghr_unghr_checkBadArgs(handle, n, ilo, ihi, dA.data(), lda, dTau.data());
+#endif
 }
 
 template <bool CPU, bool GPU, typename T, typename Td, typename Th>
@@ -246,6 +248,20 @@ void testing_orghr_unghr(Arguments& argus)
     double max_error = 0, gpu_time_used = 0, cpu_time_used = 0;
 
     size_t size_Ar = (argus.unit_check || argus.norm_check) ? size_A : 0;
+
+// check feature flag
+#ifndef ROCSOLVER_ENABLE_XXGHR
+    {
+        EXPECT_ROCBLAS_STATUS(
+            rocsolver_orghr_unghr(handle, n, ilo, ihi, (T*)nullptr, lda, (T*)nullptr),
+            rocblas_status_not_implemented);
+
+        if(argus.timing)
+            rocsolver_bench_inform(inform_not_implemented);
+
+        return;
+    }
+#endif
 
     // check invalid sizes
     bool invalid_size = (n < 0 || lda < n || (n && (ilo < 1 || ihi < ilo || ihi > n)));
