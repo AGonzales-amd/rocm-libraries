@@ -120,6 +120,8 @@ set(rocauxiliary_test_source
   auxiliary/latrd_gtest.cpp
   # hessenberg matrices
   auxiliary/lahr2_gtest.cpp
+  # trevc back-transform
+  auxiliary/trevc_backtransform_gtest.cpp
   # symmetric matrices
   auxiliary/lasyf_gtest.cpp
   auxiliary/sb2st_hb2st_gtest.cpp
@@ -255,6 +257,9 @@ if(ROCSOLVER_ENABLE_EIGENSOLVERS_64)
 endif()
 if(ROCSOLVER_ENABLE_HESSENBERG)
   target_compile_definitions(rocsolver-test PRIVATE ROCSOLVER_ENABLE_HESSENBERG)
+endif()
+if(ROCSOLVER_ENABLE_TREVC3)
+  target_compile_definitions(rocsolver-test PRIVATE ROCSOLVER_ENABLE_TREVC3)
 endif()
 
 # Mirror the library's 2-stage eigensolver feature flag so the tests assert the

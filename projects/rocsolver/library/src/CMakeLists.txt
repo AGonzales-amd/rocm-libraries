@@ -297,6 +297,8 @@ set(rocsolver_auxiliary_source
   auxiliary/rocauxiliary_latrd_forsytrd.cpp
   # Hessenberg reduction auxiliary
   auxiliary/rocauxiliary_lahr2.cpp
+  # trevc back-transform (eigenvector computation from Schur form)
+  auxiliary/rocauxiliary_trevc_backtransform.cpp
   # symmetric matrices
   auxiliary/rocauxiliary_lasyf.cpp
   # triangular matrices

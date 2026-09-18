@@ -94,6 +94,50 @@ rocblas_status rocsolver_zlahr2(rocblas_handle handle,
                                 rocblas_double_complex* Y,
                                 const rocblas_int ldy);
 
+rocblas_status rocsolver_strevc_backtransform(rocblas_handle handle,
+                                              const rocblas_side side,
+                                              const rocblas_int n,
+                                              const float* T,
+                                              const rocblas_int ldt,
+                                              float* VL,
+                                              const rocblas_int ldvl,
+                                              float* VR,
+                                              const rocblas_int ldvr,
+                                              const rocblas_int mm);
+
+rocblas_status rocsolver_dtrevc_backtransform(rocblas_handle handle,
+                                              const rocblas_side side,
+                                              const rocblas_int n,
+                                              const double* T,
+                                              const rocblas_int ldt,
+                                              double* VL,
+                                              const rocblas_int ldvl,
+                                              double* VR,
+                                              const rocblas_int ldvr,
+                                              const rocblas_int mm);
+
+rocblas_status rocsolver_ctrevc_backtransform(rocblas_handle handle,
+                                              const rocblas_side side,
+                                              const rocblas_int n,
+                                              const rocblas_float_complex* T,
+                                              const rocblas_int ldt,
+                                              rocblas_float_complex* VL,
+                                              const rocblas_int ldvl,
+                                              rocblas_float_complex* VR,
+                                              const rocblas_int ldvr,
+                                              const rocblas_int mm);
+
+rocblas_status rocsolver_ztrevc_backtransform(rocblas_handle handle,
+                                              const rocblas_side side,
+                                              const rocblas_int n,
+                                              const rocblas_double_complex* T,
+                                              const rocblas_int ldt,
+                                              rocblas_double_complex* VL,
+                                              const rocblas_int ldvl,
+                                              rocblas_double_complex* VR,
+                                              const rocblas_int ldvr,
+                                              const rocblas_int mm);
+
 rocblas_status rocsolver_slatrd_forsytrd(rocblas_handle handle,
                                          rocblas_fill uplo,
                                          rocblas_int n,
@@ -3128,6 +3172,63 @@ inline rocblas_status rocsolver_lahr2(rocblas_handle handle,
                                       rocblas_int ldy)
 {
     return rocsolver_zlahr2(handle, n, k, nb, A, lda, tau, T, ldt, Y, ldy);
+}
+
+/******************** TREVC_BACKTRANSFORM ********************/
+inline rocblas_status rocsolver_trevc_backtransform(rocblas_handle handle,
+                                                    rocblas_side side,
+                                                    rocblas_int n,
+                                                    const float* T,
+                                                    rocblas_int ldt,
+                                                    float* VL,
+                                                    rocblas_int ldvl,
+                                                    float* VR,
+                                                    rocblas_int ldvr,
+                                                    rocblas_int mm)
+{
+    return rocsolver_strevc_backtransform(handle, side, n, T, ldt, VL, ldvl, VR, ldvr, mm);
+}
+
+inline rocblas_status rocsolver_trevc_backtransform(rocblas_handle handle,
+                                                    rocblas_side side,
+                                                    rocblas_int n,
+                                                    const double* T,
+                                                    rocblas_int ldt,
+                                                    double* VL,
+                                                    rocblas_int ldvl,
+                                                    double* VR,
+                                                    rocblas_int ldvr,
+                                                    rocblas_int mm)
+{
+    return rocsolver_dtrevc_backtransform(handle, side, n, T, ldt, VL, ldvl, VR, ldvr, mm);
+}
+
+inline rocblas_status rocsolver_trevc_backtransform(rocblas_handle handle,
+                                                    rocblas_side side,
+                                                    rocblas_int n,
+                                                    const rocblas_float_complex* T,
+                                                    rocblas_int ldt,
+                                                    rocblas_float_complex* VL,
+                                                    rocblas_int ldvl,
+                                                    rocblas_float_complex* VR,
+                                                    rocblas_int ldvr,
+                                                    rocblas_int mm)
+{
+    return rocsolver_ctrevc_backtransform(handle, side, n, T, ldt, VL, ldvl, VR, ldvr, mm);
+}
+
+inline rocblas_status rocsolver_trevc_backtransform(rocblas_handle handle,
+                                                    rocblas_side side,
+                                                    rocblas_int n,
+                                                    const rocblas_double_complex* T,
+                                                    rocblas_int ldt,
+                                                    rocblas_double_complex* VL,
+                                                    rocblas_int ldvl,
+                                                    rocblas_double_complex* VR,
+                                                    rocblas_int ldvr,
+                                                    rocblas_int mm)
+{
+    return rocsolver_ztrevc_backtransform(handle, side, n, T, ldt, VL, ldvl, VR, ldvr, mm);
 }
 
 /******************** SB2ST_HB2ST ********************/

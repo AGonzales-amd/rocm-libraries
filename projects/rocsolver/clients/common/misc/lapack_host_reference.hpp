@@ -384,6 +384,22 @@ void cpu_lahr2(rocblas_int n,
                rocblas_int ldy);
 
 template <typename T, typename W>
+void cpu_trevc3(rocblas_side side,
+                rocblas_int n,
+                const T* T_mat,
+                rocblas_int ldt,
+                T* VL,
+                rocblas_int ldvl,
+                T* VR,
+                rocblas_int ldvr,
+                rocblas_int mm,
+                rocblas_int* m,
+                W* work,
+                rocblas_int lwork,
+                W* rwork,
+                rocblas_int lrwork);
+
+template <typename T, typename W>
 void cpu_bdsqr(rocblas_fill uplo,
                rocblas_int n,
                rocblas_int nv,
