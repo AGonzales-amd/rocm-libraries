@@ -33,35 +33,36 @@ using ::testing::Values;
 using ::testing::ValuesIn;
 using namespace std;
 
-// each size_range entry is {side ('L'=0,'R'=1,'B'=2), n, ldt, ldvl, ldvr, mm}
+// each size_range entry is {side ('L'=0,'R'=1,'B'=2), n, ldvl, ldvr, ldql, ldqr, mm}
 // case when n = 0 will also execute the bad arguments test
 // (null handle, null pointers and invalid values)
 
 // for checkin_lapack tests
 const vector<vector<int>> trevc_backtransform_size_range = {
     // quick return (n = 0)
-    {1, 0, 1, 1, 1, 0},
+    {1, 0, 1, 1, 1, 1, 0},
     // invalid
-    {1, -1, 5, 1, 5, 5},  // n < 0
-    {1, 5, 4, 1, 5, 5},   // ldt < n
-    {0, 5, 5, 4, 1, 5},   // ldvl < n (side = left)
-    {1, 5, 5, 1, 4, 5},   // ldvr < n (side = right)
+    {1, -1, 1, 5, 1, 5, 5},  // n < 0
+    {0, 5, 4, 1, 5, 1, 5},   // ldvl < n (side = left)
+    {1, 5, 1, 4, 1, 5, 5},   // ldvr < n (side = right)
+    {0, 5, 5, 1, 4, 1, 5},   // ldql < n (side = left)
+    {1, 5, 1, 5, 1, 4, 5},   // ldqr < n (side = right)
     // normal (valid) samples — side: 0=left, 1=right, 2=both
-    {0, 5, 5, 5, 1, 5},
-    {1, 5, 5, 1, 5, 5},
-    {2, 5, 5, 5, 5, 5},
-    {1, 10, 10, 1, 10, 10},
-    {2, 20, 20, 20, 20, 20},
-    {0, 50, 50, 50, 1, 50},
-    {1, 50, 50, 1, 50, 50},
-    {2, 50, 50, 50, 50, 50},
+    {0, 3, 3, 3, 3, 3, 3},
+    {0, 5, 5, 5, 5, 5, 5},
+    {2, 5, 5, 5, 5, 5, 5},
+    {1, 10, 1, 10, 1, 10, 10},
+    {2, 20, 20, 20, 20, 20, 20},
+    {0, 50, 50, 1, 50, 1, 50},
+    {1, 50, 1, 50, 1, 50, 50},
+    {2, 50, 50, 50, 50, 50, 50},
 };
 
 // for daily_lapack tests
 const vector<vector<int>> trevc_backtransform_large_size_range = {
-    {1, 200, 200, 1, 200, 200},
-    {2, 512, 512, 512, 512, 512},
-    {2, 1000, 1024, 1024, 1024, 1000},
+    {1, 200, 1, 200, 1, 200, 200},
+    {2, 512, 512, 512, 512, 512, 512},
+    {2, 1000, 1024, 1024, 1024, 1024, 1000},
 };
 
 Arguments trevc_backtransform_setup_arguments(vector<int> sz)
@@ -71,10 +72,11 @@ Arguments trevc_backtransform_setup_arguments(vector<int> sz)
     char side_c = (sz[0] == 0) ? 'L' : (sz[0] == 1) ? 'R' : 'B';
     arg.set<char>("side", side_c);
     arg.set<rocblas_int>("n", sz[1]);
-    arg.set<rocblas_int>("ldt", sz[2]);
-    arg.set<rocblas_int>("ldvl", sz[3]);
-    arg.set<rocblas_int>("ldvr", sz[4]);
-    arg.set<rocblas_int>("mm", sz[5]);
+    arg.set<rocblas_int>("ldvl", sz[2]);
+    arg.set<rocblas_int>("ldvr", sz[3]);
+    arg.set<rocblas_int>("ldql", sz[4]);
+    arg.set<rocblas_int>("ldqr", sz[5]);
+    arg.set<rocblas_int>("mm", sz[6]);
 
     arg.timing = 0;
 

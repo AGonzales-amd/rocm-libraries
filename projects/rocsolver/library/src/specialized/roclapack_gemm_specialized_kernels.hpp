@@ -71,9 +71,9 @@ ROCSOLVER_KERNEL void gemm_kernel(const I m,
     // batch instance
     T a = load_scalar(alpha, bid, 0);
     T b = load_scalar(beta, bid, 0);
-    T* A = load_ptr_batch(AA, bid, shiftA, strideA);
-    T* B = load_ptr_batch(BB, bid, shiftB, strideB);
-    T* C = load_ptr_batch(CC, bid, shiftC, strideC);
+    auto A = load_ptr_batch(AA, bid, shiftA, strideA);
+    auto B = load_ptr_batch(BB, bid, shiftB, strideB);
+    auto C = load_ptr_batch(CC, bid, shiftC, strideC);
 
     // gemm function
     T temp = 0;
@@ -144,9 +144,9 @@ ROCSOLVER_KERNEL void mfma_gemm_kernel(rocblas_operation transA,
     // batch instance
     T a = load_scalar(alpha, batch_id, 0);
     T b = load_scalar(beta, batch_id, 0);
-    T* A = load_ptr_batch(AA, batch_id, shiftA, strideA);
-    T* B = load_ptr_batch(BB, batch_id, shiftB, strideB);
-    T* C = load_ptr_batch(CC, batch_id, shiftC, strideC);
+    auto A = load_ptr_batch(AA, batch_id, shiftA, strideA);
+    auto B = load_ptr_batch(BB, batch_id, shiftB, strideB);
+    auto C = load_ptr_batch(CC, batch_id, shiftC, strideC);
 
     A += block_row * (transA == rocblas_operation_none ? inca : lda);
     B += block_col * (transB == rocblas_operation_none ? ldb : incb);

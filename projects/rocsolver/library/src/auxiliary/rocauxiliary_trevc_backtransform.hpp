@@ -27,36 +27,264 @@
 
 #pragma once
 
+#include "lapack_device_functions.hpp"
 #include "rocblas.hpp"
 #include "rocsolver/rocsolver.h"
 
 ROCSOLVER_BEGIN_NAMESPACE
+
+template <typename T, typename I, typename U>
+ROCSOLVER_KERNEL void __launch_bounds__(BS1) trevc_bt_scale_complex_kernel(const I n,
+                                                                     const I mm,
+                                                                     U __restrict__ VV,
+                                                                     const rocblas_stride shiftV,
+                                                                     const I ldv,
+                                                                     const rocblas_stride strideV,
+                                                                     T* __restrict__ WW,
+                                                                     const rocblas_stride ldw,
+                                                                     const rocblas_stride strideW,
+                                                                     const I batch_count)
+{
+    using S = decltype(std::real(T{}));
+
+    const I row_start = threadIdx.x;
+    const I col_start = blockIdx.x;
+    const I bid_start = blockIdx.z;
+
+    const I row_inc = blockDim.x;
+    const I col_inc = gridDim.x;
+    const I bid_inc = gridDim.z;
+
+    __shared__ S sval[BS1];
+
+    for(I bid = bid_start; bid < batch_count; bid += bid_inc)
+    {
+        T* __restrict__ V = load_ptr_batch<T>(VV, bid, shiftV, strideV);
+        const T* __restrict__ W = load_ptr_batch<T>(WW, bid, 0, strideW);
+
+        for(I col = col_start; col < mm; col += col_inc)
+        {
+            iamax<BS1>(row_start, n, &W[idx2D(0, col, ldw)], 1, sval);
+            __syncthreads();
+
+            const auto scale = (T)1 / sval[0];
+            for(I row = row_start; row < n; row += row_inc)
+            {
+                V[idx2D(row, col, ldv)] = scale * W[idx2D(row, col, ldw)];
+            }
+        }
+    }
+}
+
+template <typename T, typename I, typename U>
+ROCSOLVER_KERNEL void __launch_bounds__(BS1) trevc_bt_get_scale_real_kernel(
+                const bool left,
+                const I n,
+                                                                     const I mm,
+                                                                     U __restrict__ VV,
+                                                                     const rocblas_stride shiftV,
+                                                                     const I ldv,
+                                                                     const rocblas_stride strideV,
+                                                                     I* __restrict__ ips,
+                                                                     const I batch_count)
+{
+    using S = decltype(std::real(T{}));
+
+    const I col_start = blockIdx.x * blockDim.x + threadIdx.x;
+    const I bid_start = blockIdx.z;
+
+    const I col_inc = blockDim.x * gridDim.x;
+    const I bid_inc = gridDim.z;
+
+    for(I bid = bid_start; bid < batch_count; bid += bid_inc)
+    {
+        const T* __restrict__ V = load_ptr_batch<T>(VV, bid, shiftV, strideV);
+
+        for(I col = col_start; col < mm; col += col_inc)
+        {
+            // 0: no pair, -1: first pair, 1: second pair
+            int ip = 0;
+
+            if(left)
+            {
+                if(col < mm - 1 && V[idx2D(col, col + 1, ldv)] != (T)0)
+                    ip = -1;
+                else if(col > 0 && V[idx2D(col - 1, col, ldv)] != (T)0)
+                    ip = 1;
+            }
+            else
+            {
+                if(col < mm - 1 && V[idx2D(col + 1, col, ldv)] != (T)0)
+                    ip = -1;
+                else if(col > 0 && V[idx2D(col, col - 1, ldv)] != (T)0)
+                    ip = 1;
+            }
+
+            printf("(%d, %d)\n", col, ip);
+
+            ips[bid * mm + col] = ip;
+        }
+    }
+}
+
+template <typename T, typename I, typename U>
+ROCSOLVER_KERNEL void __launch_bounds__(BS1) trevc_bt_scale_real_kernel(const I n,
+                                                                     const I mm,
+                                                                     U __restrict__ VV,
+                                                                     const rocblas_stride shiftV,
+                                                                     const I ldv,
+                                                                     const rocblas_stride strideV,
+                                                                     T* __restrict__ WW,
+                                                                     const rocblas_stride ldw,
+                                                                     const rocblas_stride strideW,
+                                                                     const I* __restrict__ ips,
+                                                                     const I batch_count)
+{
+    using S = decltype(std::real(T{}));
+
+    const I row_start = threadIdx.x;
+    const I col_start = blockIdx.x;
+    const I bid_start = blockIdx.z;
+
+    const I row_inc = blockDim.x;
+    const I col_inc = gridDim.x;
+    const I bid_inc = gridDim.z;
+
+    __shared__ S sval[BS1];
+
+    for(I bid = bid_start; bid < batch_count; bid += bid_inc)
+    {
+        T* __restrict__ V = load_ptr_batch<T>(VV, bid, shiftV, strideV);
+        const T* __restrict__ W = load_ptr_batch<T>(WW, bid, 0, strideW);
+
+        for(I col = col_start; col < mm; col += col_inc)
+        {
+            const auto ip = ips[bid * mm + col];
+            if(ip == 0)
+            {
+                iamax<BS1>(row_start, n, &W[idx2D(0, col, ldw)], 1, sval);
+            }
+            else if(ip == -1)
+            {   
+                iamax<BS1>(row_start, n, &W[idx2D(0, col, ldw)], &W[idx2D(0, col + 1, ldw)], 1, sval);
+            }
+            else
+            {
+                continue;
+            }
+            __syncthreads();
+
+            const auto scale = (T)1 / sval[0];
+            for(I row = row_start; row < n; row += row_inc)
+            {
+                V[idx2D(row, col, ldv)] = scale * W[idx2D(row, col, ldw)];
+
+                if(ip == -1)
+                    V[idx2D(row, col + 1, ldv)] = scale * W[idx2D(row, col + 1, ldw)];
+            }
+        }
+    }
+}
+
+// Host helper to launch trevc_bt_scale_kernel
+template <typename T, typename I, typename U, std::enable_if_t<rocblas_is_complex<T>, int> = 0>
+void trevc_bt_scale(rocblas_handle handle,
+                const bool left,
+                const I n,
+                const I mm,
+                U __restrict__ V,
+                const rocblas_stride shiftV,
+                const I ldv,
+                const rocblas_stride strideV,
+                T* __restrict__ W,
+                const rocblas_stride ldw,
+                const rocblas_stride strideW,
+                I* __restrict__ ips,
+                const I batch_count)
+{
+    hipStream_t stream;
+    rocblas_get_stream(handle, &stream);
+
+    const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
+    const auto& grid_limits = props->maxGridSize;
+
+    I bx = std::min<I>(mm, grid_limits[0]);
+    I bz = std::min<I>(batch_count, grid_limits[2]);
+    ROCSOLVER_LAUNCH_KERNEL((trevc_bt_scale_complex_kernel<T, I, U>), dim3(bx, 1, bz), dim3(BS1), 0,
+                            stream, n, mm, V, shiftV, ldv, strideV, W, ldw, strideW,
+                            batch_count);
+}
+
+template <typename T, typename I, typename U, std::enable_if_t<!rocblas_is_complex<T>, int> = 0>
+void trevc_bt_scale(rocblas_handle handle,
+                const bool left,
+                const I n,
+                const I mm,
+                U __restrict__ V,
+                const rocblas_stride shiftV,
+                const I ldv,
+                const rocblas_stride strideV,
+                T* __restrict__ W,
+                const rocblas_stride ldw,
+                const rocblas_stride strideW,
+                I* __restrict__ ips,
+                const I batch_count)
+{
+    hipStream_t stream;
+    rocblas_get_stream(handle, &stream);
+
+    const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
+    const auto& grid_limits = props->maxGridSize;
+    {
+        I bx = std::min<I>((mm + BS1 - 1) / BS1, grid_limits[0]);
+        I bz = std::min<I>(batch_count, grid_limits[2]);
+        ROCSOLVER_LAUNCH_KERNEL((trevc_bt_get_scale_real_kernel<T, I, U>), dim3(bx, 1, bz), dim3(BS1), 0,
+                                stream, left, n, mm, V, shiftV, ldv, strideV, ips,
+                                batch_count);
+    }
+    {
+        I bx = std::min<I>(mm, grid_limits[0]);
+        I bz = std::min<I>(batch_count, grid_limits[2]);
+        ROCSOLVER_LAUNCH_KERNEL((trevc_bt_scale_real_kernel<T, I, U>), dim3(bx, 1, bz), dim3(BS1), 0,
+                                stream, n, mm, V, shiftV, ldv, strideV, W, ldw, strideW, ips,
+                                batch_count);
+    }
+}
 
 template <bool BATCHED, typename T>
 void rocsolver_trevc_backtransform_getMemorySize(const rocblas_side side,
                                                  const rocblas_int n,
                                                  const rocblas_int mm,
                                                  const rocblas_int batch_count,
-                                                 size_t* size_work)
+                                                 size_t* size_work,
+                                                 size_t* size_ips,
+                                                 size_t* size_workArr)
 {
     *size_work = 0;
+    *size_ips = 0;
+    *size_workArr = 0;
 
-    if(n == 0 || batch_count == 0)
+    if(n == 0 || mm == 0 || batch_count == 0)
         return;
 
-    // TODO: determine actual workspace requirements once algorithm is implemented
+    *size_work = sizeof(T) * n * mm * batch_count;
+    if constexpr(!rocblas_is_complex<T>)
+        *size_ips = sizeof(rocblas_int) * mm * batch_count;
+    *size_workArr = sizeof(T*) * batch_count;
 }
 
-template <typename T, typename U>
+template <typename T, typename U1, typename U2>
 rocblas_status rocsolver_trevc_backtransform_argCheck(rocblas_handle handle,
                                                       const rocblas_side side,
                                                       const rocblas_int n,
-                                                      U T_mat,
-                                                      const rocblas_int ldt,
-                                                      T* VL,
+                                                      U1 VL,
                                                       const rocblas_int ldvl,
-                                                      T* VR,
+                                                      U1 VR,
                                                       const rocblas_int ldvr,
+                                                      U2 QL,
+                                                      const rocblas_int ldql,
+                                                      U2 QR,
+                                                      const rocblas_int ldqr,
                                                       const rocblas_int mm,
                                                       const rocblas_int batch_count = 1)
 {
@@ -68,11 +296,15 @@ rocblas_status rocsolver_trevc_backtransform_argCheck(rocblas_handle handle,
         return rocblas_status_invalid_value;
 
     // 2. invalid size
-    if(n < 0 || ldt < std::max(1, n) || mm < 0 || batch_count < 0)
+    if(n < 0 || mm < 0 || batch_count < 0)
         return rocblas_status_invalid_size;
     if(left && ldvl < std::max(1, n))
         return rocblas_status_invalid_size;
     if(right && ldvr < std::max(1, n))
+        return rocblas_status_invalid_size;
+    if(left && ldql < std::max(1, n))
+        return rocblas_status_invalid_size;
+    if(right && ldqr < std::max(1, n))
         return rocblas_status_invalid_size;
 
     // skip pointer checks if querying memory size
@@ -80,44 +312,87 @@ rocblas_status rocsolver_trevc_backtransform_argCheck(rocblas_handle handle,
         return rocblas_status_continue;
 
     // 3. invalid pointers
-    if(n && !T_mat)
-        return rocblas_status_invalid_pointer;
     if(left && mm && !VL)
         return rocblas_status_invalid_pointer;
     if(right && mm && !VR)
+        return rocblas_status_invalid_pointer;
+    if(left && mm && !QL)
+        return rocblas_status_invalid_pointer;
+    if(right && mm && !QR)
         return rocblas_status_invalid_pointer;
 
     return rocblas_status_continue;
 }
 
-template <typename T, typename U>
+template <typename T, typename U1, typename U2>
 rocblas_status rocsolver_trevc_backtransform_template(rocblas_handle handle,
                                                       const rocblas_side side,
                                                       const rocblas_int n,
-                                                      U T_mat,
-                                                      const rocblas_stride shiftT,
-                                                      const rocblas_int ldt,
-                                                      const rocblas_stride strideT,
-                                                      T* VL,
+                                                      U1 VL,
                                                       const rocblas_stride shiftVL,
                                                       const rocblas_int ldvl,
                                                       const rocblas_stride strideVL,
-                                                      T* VR,
+                                                      U1 VR,
                                                       const rocblas_stride shiftVR,
                                                       const rocblas_int ldvr,
                                                       const rocblas_stride strideVR,
+                                                      U2 QL,
+                                                      const rocblas_stride shiftQL,
+                                                      const rocblas_int ldql,
+                                                      const rocblas_stride strideQL,
+                                                      U2 QR,
+                                                      const rocblas_stride shiftQR,
+                                                      const rocblas_int ldqr,
+                                                      const rocblas_stride strideQR,
                                                       const rocblas_int mm,
                                                       const rocblas_int batch_count,
-                                                      void* work)
+                                                      T* work,
+                                                      rocblas_int* ips,
+                                                      T** workArr)
 {
-    ROCSOLVER_ENTER("trevc_backtransform", "side:", side, "n:", n, "shiftT:", shiftT, "ldt:", ldt,
-                    "shiftVL:", shiftVL, "ldvl:", ldvl, "shiftVR:", shiftVR, "ldvr:", ldvr, "mm:",
-                    mm, "bc:", batch_count);
+    ROCSOLVER_ENTER("trevc_backtransform", "side:", side, "n:", n, "shiftVL:", shiftVL, "ldvl:",
+                    ldvl, "shiftVR:", shiftVR, "ldvr:", ldvr, "shiftQL:", shiftQL, "ldql:", ldql,
+                    "shiftQR:", shiftQR, "ldqr:", ldqr, "mm:", mm, "bc:", batch_count);
 
-    if(n == 0 || batch_count == 0)
+    if(n == 0 || mm == 0 || batch_count == 0)
         return rocblas_status_success;
 
-    // TODO: implement TREVC3 backtransform algorithm
+    hipStream_t stream;
+    rocblas_get_stream(handle, &stream);
+
+    bool left = (side == rocblas_side_left || side == rocblas_side_both);
+    bool right = (side == rocblas_side_right || side == rocblas_side_both);
+
+    // everything must be executed with scalars on the host
+    rocblas_pointer_mode_saver saver(handle, rocblas_pointer_mode_host);
+
+    const T zero = (T)0.0;
+    const T one = (T)1.0;
+
+    rocblas_stride strideW = n * mm;
+
+    if(left)
+    {
+        // work = QL * VL
+        rocsolver_gemm<T>(handle, rocblas_operation_none, rocblas_operation_none, n, mm,
+                            n, &one, QL, shiftQL, ldql, strideQL, cast2constType<T>(VL), shiftVL, ldvl, strideVL,
+                            &zero, work, 0, n, strideW, batch_count, workArr);
+
+        // scale VL
+        trevc_bt_scale<T>(handle, true, n, mm, VL, shiftVL, ldvl, strideVL, work, n, strideW, ips, batch_count);
+    }
+
+    if(right)
+    {
+        // work = QR * VR
+        rocsolver_gemm<T>(handle, rocblas_operation_none, rocblas_operation_none, n, mm,
+                            n, &one, QR, shiftQR, ldqr, strideQR, cast2constType<T>(VR), shiftVR, ldvr, strideVR,
+                            &zero, work, 0, n, strideW, batch_count, workArr);
+
+        // scale VR
+        trevc_bt_scale<T>(handle, false, n, mm, VR, shiftVR, ldvr, strideVR, work, n, strideW, ips, batch_count);
+    }
+
     return rocblas_status_success;
 }
 

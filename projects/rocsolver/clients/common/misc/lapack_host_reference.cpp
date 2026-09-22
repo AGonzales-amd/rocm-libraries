@@ -4264,6 +4264,7 @@ void cpu_lahr2<rocblas_double_complex>(rocblas_int n,
 // trevc3
 template <>
 void cpu_trevc3<float, float>(rocblas_side side,
+                              char howmny,
                               rocblas_int n,
                               const float* T_mat,
                               rocblas_int ldt,
@@ -4279,7 +4280,6 @@ void cpu_trevc3<float, float>(rocblas_side side,
                               rocblas_int lrwork)
 {
     char side_c = (side == rocblas_side_left) ? 'L' : (side == rocblas_side_right) ? 'R' : 'B';
-    char howmny = 'A';
     int info = 0;
     strevc3_(&side_c, &howmny, nullptr, &n, const_cast<float*>(T_mat), &ldt, VL, &ldvl, VR, &ldvr,
              &mm, m, work, &lwork, &info);
@@ -4287,6 +4287,7 @@ void cpu_trevc3<float, float>(rocblas_side side,
 
 template <>
 void cpu_trevc3<double, double>(rocblas_side side,
+                                char howmny,
                                 rocblas_int n,
                                 const double* T_mat,
                                 rocblas_int ldt,
@@ -4302,7 +4303,6 @@ void cpu_trevc3<double, double>(rocblas_side side,
                                 rocblas_int lrwork)
 {
     char side_c = (side == rocblas_side_left) ? 'L' : (side == rocblas_side_right) ? 'R' : 'B';
-    char howmny = 'A';
     int info = 0;
     dtrevc3_(&side_c, &howmny, nullptr, &n, const_cast<double*>(T_mat), &ldt, VL, &ldvl, VR,
              &ldvr, &mm, m, work, &lwork, &info);
@@ -4310,6 +4310,7 @@ void cpu_trevc3<double, double>(rocblas_side side,
 
 template <>
 void cpu_trevc3<rocblas_float_complex, float>(rocblas_side side,
+                                              char howmny,
                                               rocblas_int n,
                                               const rocblas_float_complex* T_mat,
                                               rocblas_int ldt,
@@ -4325,7 +4326,6 @@ void cpu_trevc3<rocblas_float_complex, float>(rocblas_side side,
                                               rocblas_int lrwork)
 {
     char side_c = (side == rocblas_side_left) ? 'L' : (side == rocblas_side_right) ? 'R' : 'B';
-    char howmny = 'A';
     int info = 0;
     ctrevc3_(&side_c, &howmny, nullptr, &n,
              const_cast<rocblas_float_complex*>(T_mat), &ldt, VL, &ldvl, VR, &ldvr, &mm, m, work,
@@ -4334,6 +4334,7 @@ void cpu_trevc3<rocblas_float_complex, float>(rocblas_side side,
 
 template <>
 void cpu_trevc3<rocblas_double_complex, double>(rocblas_side side,
+                                                char howmny,
                                                 rocblas_int n,
                                                 const rocblas_double_complex* T_mat,
                                                 rocblas_int ldt,
@@ -4349,7 +4350,6 @@ void cpu_trevc3<rocblas_double_complex, double>(rocblas_side side,
                                                 rocblas_int lrwork)
 {
     char side_c = (side == rocblas_side_left) ? 'L' : (side == rocblas_side_right) ? 'R' : 'B';
-    char howmny = 'A';
     int info = 0;
     ztrevc3_(&side_c, &howmny, nullptr, &n,
              const_cast<rocblas_double_complex*>(T_mat), &ldt, VL, &ldvl, VR, &ldvr, &mm, m, work,

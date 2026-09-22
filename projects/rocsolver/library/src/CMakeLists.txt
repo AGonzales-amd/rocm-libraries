@@ -545,6 +545,9 @@ endif()
 if(ROCSOLVER_ENABLE_HESSENBERG)
   target_compile_definitions(rocsolver PRIVATE ROCSOLVER_ENABLE_HESSENBERG)
 endif()
+if(ROCSOLVER_ENABLE_TREVC3)
+  target_compile_definitions(rocsolver PRIVATE ROCSOLVER_ENABLE_TREVC3)
+endif()
 
 target_compile_definitions(rocsolver PRIVATE
   ROCM_USE_FLOAT16

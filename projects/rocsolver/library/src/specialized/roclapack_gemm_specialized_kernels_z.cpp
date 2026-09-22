@@ -40,6 +40,11 @@ INSTANTIATE_GEMM(rocblas_double_complex,
                  rocblas_double_complex*);
 INSTANTIATE_GEMM(rocblas_double_complex,
                  rocblas_int,
+                 const rocblas_double_complex*,
+                 const rocblas_double_complex*,
+                 rocblas_double_complex*);
+INSTANTIATE_GEMM(rocblas_double_complex,
+                 rocblas_int,
                  rocblas_double_complex* const*,
                  rocblas_double_complex* const*,
                  rocblas_double_complex* const*);
@@ -82,6 +87,11 @@ INSTANTIATE_GEMM(rocblas_double_complex,
                  int64_t,
                  rocblas_double_complex*,
                  rocblas_double_complex*,
+                 rocblas_double_complex*);
+INSTANTIATE_GEMM(rocblas_double_complex,
+                 int64_t,
+                 const rocblas_double_complex*,
+                 const rocblas_double_complex*,
                  rocblas_double_complex*);
 INSTANTIATE_GEMM(rocblas_double_complex,
                  int64_t,

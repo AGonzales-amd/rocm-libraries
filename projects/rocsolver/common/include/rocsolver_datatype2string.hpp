@@ -327,6 +327,8 @@ constexpr rocblas_side char2rocblas_side(char value)
     case 'l': return rocblas_side_left;
     case 'R':
     case 'r': return rocblas_side_right;
+    case 'B':
+    case 'b': return rocblas_side_both;
     default: return static_cast<rocblas_side>(0);
     }
 }

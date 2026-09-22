@@ -385,6 +385,7 @@ void cpu_lahr2(rocblas_int n,
 
 template <typename T, typename W>
 void cpu_trevc3(rocblas_side side,
+                char howmny,
                 rocblas_int n,
                 const T* T_mat,
                 rocblas_int ldt,
@@ -394,7 +395,7 @@ void cpu_trevc3(rocblas_side side,
                 rocblas_int ldvr,
                 rocblas_int mm,
                 rocblas_int* m,
-                W* work,
+                T* work,
                 rocblas_int lwork,
                 W* rwork,
                 rocblas_int lrwork);

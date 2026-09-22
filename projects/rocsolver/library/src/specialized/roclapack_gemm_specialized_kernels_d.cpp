@@ -34,6 +34,7 @@ ROCSOLVER_BEGIN_NAMESPACE
 *************************************************************/
 
 INSTANTIATE_GEMM(double, rocblas_int, double*, double*, double*);
+INSTANTIATE_GEMM(double, rocblas_int, const double*, const double*, double*);
 INSTANTIATE_GEMM(double, rocblas_int, double* const*, double* const*, double* const*);
 
 INSTANTIATE_GEMM(double, rocblas_int, double*, double* const*, double* const*);
@@ -47,6 +48,7 @@ INSTANTIATE_GEMM(double, rocblas_int, double*, double*, double* const*);
 #ifdef HAVE_ROCBLAS_64
 // 64-bit APIs
 INSTANTIATE_GEMM(double, int64_t, double*, double*, double*);
+INSTANTIATE_GEMM(double, int64_t, const double*, const double*, double*);
 INSTANTIATE_GEMM(double, int64_t, double* const*, double* const*, double* const*);
 
 INSTANTIATE_GEMM(double, int64_t, double*, double* const*, double* const*);

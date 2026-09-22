@@ -75,5 +75,8 @@ endif()
 if(ROCSOLVER_ENABLE_HESSENBERG)
   target_compile_definitions(rocsolver-bench PRIVATE ROCSOLVER_ENABLE_HESSENBERG)
 endif()
+if(ROCSOLVER_ENABLE_TREVC3)
+  target_compile_definitions(rocsolver-bench PRIVATE ROCSOLVER_ENABLE_TREVC3)
+endif()
 
 rocm_install(TARGETS rocsolver-bench COMPONENT benchmarks)
