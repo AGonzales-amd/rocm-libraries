@@ -243,7 +243,7 @@ void trevc_backtransform_getError(const rocblas_handle handle,
     rocblas_int lrwork_tv = n;
     std::vector<T> work_tv(lwork_tv);
     std::vector<S> rwork_tv(lrwork_tv);
-    
+
     host_strided_batch_vector<T> hT(n * n, 1, n * n, 1);
 
     // input data initialization
@@ -261,7 +261,7 @@ void trevc_backtransform_getError(const rocblas_handle handle,
 
     std::cout << "hQL" << hQL << std::endl;
     std::cout << "hVL" << hVL << std::endl;
-    
+
     cpu_trevc3<T, S>(side, 'B', n, hT[0], n,
                     left ? hQL[0] : nullptr, ldql,
                     right ? hQR[0] : nullptr, ldqr,
@@ -317,7 +317,7 @@ void trevc_backtransform_getPerfData(const rocblas_handle handle,
         trevc_backtransform_initData<true, false, T>(handle, side, n, dVL, ldvl, dVR, ldvr, dQL,
                                                      ldql, dQR, ldqr, mm, hVL, hVR, hQL, hQR, hT);
 
-        // cpu-lapack performance (not implemented — measure zero)
+        // cpu-lapack performance (not implemented -- measure zero)
         *cpu_time_used = get_time_us_no_sync();
         *cpu_time_used = get_time_us_no_sync() - *cpu_time_used;
     }
