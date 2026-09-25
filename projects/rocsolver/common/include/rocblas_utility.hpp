@@ -196,6 +196,28 @@ __forceinline__ __device__ __host__ T*
 {
     return p[block] + offset;
 }
+
+template <typename T, typename I>
+__forceinline__ __device__ __host__ const T*
+    load_ptr_batch(const T* p, I block, rocblas_stride offset, rocblas_stride stride)
+{
+    return p + block * stride + offset;
+}
+
+// For device array of device pointers
+template <typename T, typename I>
+__forceinline__ __device__ __host__ const T*
+    load_ptr_batch(const T* const* p, I block, rocblas_stride offset, rocblas_stride stride)
+{
+    return p[block] + offset;
+}
+
+template <typename T, typename I>
+__forceinline__ __device__ __host__ const T*
+    load_ptr_batch(const T** p, I block, rocblas_stride offset, rocblas_stride stride)
+{
+    return p[block] + offset;
+}
 /*
 // Helper for batched functions with temporary memory, currently just trsm and
 // trsv. Copys addresses to array of pointers for batched versions.
