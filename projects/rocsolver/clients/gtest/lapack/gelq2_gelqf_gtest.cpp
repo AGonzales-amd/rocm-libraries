@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2020-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -69,6 +69,15 @@ const vector<vector<int>> large_matrix_size_range = {
 };
 
 const vector<int> large_n_size_range = {64, 98, 130, 220, 400};
+
+// for weekly_lapack tests
+template <typename I>
+const vector<vector<I>> very_large_matrix_size_range = {
+    {220, 220},
+};
+
+template <typename I>
+const vector<I> very_large_n_size_range = {16384};
 
 Arguments gelqf_setup_arguments(gelqf_tuple tup)
 {
@@ -244,6 +253,11 @@ TEST_P(GELQF, strided_batched__double_complex)
     run_tests<false, true, rocblas_double_complex>();
 }
 
+INSTANTIATE_TEST_SUITE_P(weekly_lapack,
+                         GELQ2,
+                         Combine(ValuesIn((very_large_matrix_size_range<rocblas_int>)),
+                                 ValuesIn((very_large_n_size_range<rocblas_int>))));
+
 INSTANTIATE_TEST_SUITE_P(daily_lapack,
                          GELQ2,
                          Combine(ValuesIn(large_matrix_size_range), ValuesIn(large_n_size_range)));
@@ -251,6 +265,11 @@ INSTANTIATE_TEST_SUITE_P(daily_lapack,
 INSTANTIATE_TEST_SUITE_P(checkin_lapack,
                          GELQ2,
                          Combine(ValuesIn(matrix_size_range), ValuesIn(n_size_range)));
+
+INSTANTIATE_TEST_SUITE_P(weekly_lapack,
+                         GELQF,
+                         Combine(ValuesIn((very_large_matrix_size_range<rocblas_int>)),
+                                 ValuesIn((very_large_n_size_range<rocblas_int>))));
 
 INSTANTIATE_TEST_SUITE_P(daily_lapack,
                          GELQF,

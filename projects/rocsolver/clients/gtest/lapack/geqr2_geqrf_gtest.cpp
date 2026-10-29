@@ -1,5 +1,5 @@
 /* **************************************************************************
- * Copyright (C) 2020-2024 Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020-2026 Advanced Micro Devices, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -87,6 +87,7 @@ const vector<vector<int>> large_matrix_size_range = {
     {152, 152},
     {640, 640},
     {1000, 1024},
+    {16384, 16384},
 };
 
 const vector<int> large_n_size_range = {64, 98, 130, 220, 400};
@@ -98,6 +99,15 @@ const vector<vector<int64_t>> large_matrix_size_range_64 = {
 };
 
 const vector<int64_t> large_n_size_range_64 = {64, 98, 130, 220, 400};
+
+// for weekly_lapack tests
+template <typename I>
+const vector<vector<I>> very_large_matrix_size_range = {
+    {16384, 16384},
+};
+
+template <typename I>
+const vector<I> very_large_n_size_range = {220};
 
 template <typename I>
 Arguments geqrf_setup_arguments(geqrf_tuple<I> tup)
@@ -454,6 +464,11 @@ TEST_P(GEQRF_64, ptr_batched__double_complex)
     run_tests<true, false, rocblas_double_complex>();
 }
 
+INSTANTIATE_TEST_SUITE_P(weekly_lapack,
+                         GEQR2,
+                         Combine(ValuesIn((very_large_matrix_size_range<rocblas_int>)),
+                                 ValuesIn((very_large_n_size_range<rocblas_int>))));
+
 INSTANTIATE_TEST_SUITE_P(daily_lapack,
                          GEQR2,
                          Combine(ValuesIn(large_matrix_size_range), ValuesIn(large_n_size_range)));
@@ -462,6 +477,11 @@ INSTANTIATE_TEST_SUITE_P(checkin_lapack,
                          GEQR2,
                          Combine(ValuesIn(matrix_size_range), ValuesIn(n_size_range)));
 
+INSTANTIATE_TEST_SUITE_P(weekly_lapack,
+                         GEQRF,
+                         Combine(ValuesIn((very_large_matrix_size_range<rocblas_int>)),
+                                 ValuesIn((very_large_n_size_range<rocblas_int>))));
+
 INSTANTIATE_TEST_SUITE_P(daily_lapack,
                          GEQRF,
                          Combine(ValuesIn(large_matrix_size_range), ValuesIn(large_n_size_range)));
@@ -469,6 +489,11 @@ INSTANTIATE_TEST_SUITE_P(daily_lapack,
 INSTANTIATE_TEST_SUITE_P(checkin_lapack,
                          GEQRF,
                          Combine(ValuesIn(matrix_size_range), ValuesIn(n_size_range)));
+
+INSTANTIATE_TEST_SUITE_P(weekly_lapack,
+                         GEQR2_64,
+                         Combine(ValuesIn((very_large_matrix_size_range<int64_t>)),
+                                 ValuesIn((very_large_n_size_range<int64_t>))));
 
 INSTANTIATE_TEST_SUITE_P(daily_lapack,
                          GEQR2_64,
@@ -478,6 +503,11 @@ INSTANTIATE_TEST_SUITE_P(daily_lapack,
 INSTANTIATE_TEST_SUITE_P(checkin_lapack,
                          GEQR2_64,
                          Combine(ValuesIn(matrix_size_range_64), ValuesIn(n_size_range_64)));
+
+INSTANTIATE_TEST_SUITE_P(weekly_lapack,
+                         GEQRF_64,
+                         Combine(ValuesIn((very_large_matrix_size_range<int64_t>)),
+                                 ValuesIn((very_large_n_size_range<int64_t>))));
 
 INSTANTIATE_TEST_SUITE_P(daily_lapack,
                          GEQRF_64,

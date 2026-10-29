@@ -46,6 +46,9 @@ ROCSOLVER_BEGIN_NAMESPACE
     the library size.
 *************************************************************/
 
+// Number of elements to prefetch
+#define NFETCH 4
+
 template <int MAX_THDS, typename T, typename I, typename S, typename U>
 ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS) larfg_kernel_small(const I n,
                                                                      U alpha,
@@ -107,6 +110,89 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS) larfg_kernel_small(const I n,
         x[i * incX] *= sval[0];
 }
 
+// (n - 1 + MAX_THDS / warpSize) * sizeof(T) bytes of LDS memory required
+template <int MAX_THDS, typename T, typename I, typename S, typename U>
+ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS)
+    larfg_xs_kernel_small(const I n,
+                          U alpha,
+                          const rocblas_stride shiftA,
+                          const rocblas_stride strideA,
+                          S* beta,
+                          const rocblas_stride shiftB,
+                          const rocblas_stride strideB,
+                          U xx,
+                          const rocblas_stride shiftX,
+                          const I incX,
+                          const rocblas_stride strideX,
+                          T* tauA,
+                          const rocblas_stride strideP)
+{
+    I bid = blockIdx.z;
+    I tid = threadIdx.x;
+
+    // select batch instance
+    T* a = load_ptr_batch<T>(alpha, bid, shiftA, strideA);
+    T* x = load_ptr_batch<T>(xx, bid, shiftX, strideX);
+    T* tau = load_ptr_batch<T>(tauA, bid, 0, strideP);
+
+    S* b = beta ? load_ptr_batch<S>(beta, bid, shiftB, strideB) : nullptr;
+
+    // shared variables
+    extern __shared__ double smem[];
+    T* xs = reinterpret_cast<T*>(smem);
+    T* sval = xs + n - 1;
+
+    I ngrp = ((n - 1) / (NFETCH * MAX_THDS)) * NFETCH;
+
+    // dot
+    T norm2 = 0;
+
+    for(I i = tid, grp = 0; grp < ngrp; i += MAX_THDS, grp++)
+    {
+        I grp_mod = grp % NFETCH;
+        if(grp_mod == 0)
+        {
+            for(I k = 0; k < NFETCH; ++k)
+            {
+                xs[i + k * MAX_THDS] = x[(i + k * MAX_THDS) * incX];
+            }
+        }
+
+        norm2 += xs[i] * conj(xs[i]);
+    }
+
+    for(I i = tid + (ngrp * MAX_THDS); i < n - 1; i += MAX_THDS)
+    {
+        xs[i] = x[i * incX];
+
+        norm2 += xs[i] * conj(xs[i]);
+    }
+
+    // reduce squared entries to find squared norm of x
+    reduce_wave_sum(norm2);
+    if(tid % warpSize == 0)
+        sval[tid / warpSize] = norm2;
+    __syncthreads();
+    if(tid == 0)
+    {
+        for(I k = 1; k < MAX_THDS / warpSize; k++)
+            norm2 += sval[k];
+        sval[0] = norm2;
+    }
+    __syncthreads();
+
+    // set tau, beta, and put scaling factor into sval[0]
+    if(tid == 0)
+    {
+        run_set_taubeta<T>(tau, sval, a, b);
+    }
+    __syncthreads();
+
+    // scale x by scaling factor
+    for(I i = tid; i < n - 1; i += MAX_THDS)
+        x[i * incX] = xs[i] * sval[0];
+}
+
 /*************************************************************
     Launchers of specialized  kernels
 *************************************************************/
@@ -131,38 +217,59 @@ rocblas_status larfg_run_small(rocblas_handle handle,
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
+    // get device prop
+    const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
+
     if(n <= 64)
     {
-        ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<64, T>), dim3(1, 1, batch_count), dim3(64), 0,
-                                stream, n, alpha, shiftA, strideA, beta, shiftB, strideB, x, shiftX,
-                                incX, strideX, tau, strideP);
+        const int lds_size_axs = (n - 1 + (64 / props->warpSize)) * sizeof(T);
+        ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<64, T>), dim3(1, 1, batch_count), dim3(64),
+                                lds_size_axs, stream, n, alpha, shiftA, strideA, beta, shiftB,
+                                strideB, x, shiftX, incX, strideX, tau, strideP);
     }
     else if(n <= 128)
     {
-        ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<128, T>), dim3(1, 1, batch_count), dim3(128), 0,
-                                stream, n, alpha, shiftA, strideA, beta, shiftB, strideB, x, shiftX,
-                                incX, strideX, tau, strideP);
+        const int lds_size_axs = (n - 1 + (128 / props->warpSize)) * sizeof(T);
+        ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<128, T>), dim3(1, 1, batch_count), dim3(128),
+                                lds_size_axs, stream, n, alpha, shiftA, strideA, beta, shiftB,
+                                strideB, x, shiftX, incX, strideX, tau, strideP);
     }
     else if(n <= 256)
     {
-        ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<256, T>), dim3(1, 1, batch_count), dim3(256), 0,
-                                stream, n, alpha, shiftA, strideA, beta, shiftB, strideB, x, shiftX,
-                                incX, strideX, tau, strideP);
+        const int lds_size_axs = (n - 1 + (256 / props->warpSize)) * sizeof(T);
+        ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<256, T>), dim3(1, 1, batch_count), dim3(256),
+                                lds_size_axs, stream, n, alpha, shiftA, strideA, beta, shiftB,
+                                strideB, x, shiftX, incX, strideX, tau, strideP);
     }
     else
     {
         if constexpr(rocsolver_enable_asan)
-            ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<256, T>), dim3(1, 1, batch_count),
-                                    dim3(256), 0, stream, n, alpha, shiftA, strideA, beta, shiftB,
-                                    strideB, x, shiftX, incX, strideX, tau, strideP);
+        {
+            const int lds_size_axs = (n - 1 + (256 / props->warpSize)) * sizeof(T);
+            ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<256, T>), dim3(1, 1, batch_count),
+                                    dim3(256), lds_size_axs, stream, n, alpha, shiftA, strideA,
+                                    beta, shiftB, strideB, x, shiftX, incX, strideX, tau, strideP);
+        }
         else if(n <= 512)
-            ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<512, T>), dim3(1, 1, batch_count),
-                                    dim3(512), 0, stream, n, alpha, shiftA, strideA, beta, shiftB,
-                                    strideB, x, shiftX, incX, strideX, tau, strideP);
+        {
+            const int lds_size_axs = (n - 1 + (512 / props->warpSize)) * sizeof(T);
+            ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<512, T>), dim3(1, 1, batch_count),
+                                    dim3(512), lds_size_axs, stream, n, alpha, shiftA, strideA,
+                                    beta, shiftB, strideB, x, shiftX, incX, strideX, tau, strideP);
+        }
         else
-            ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<1024, T>), dim3(1, 1, batch_count),
-                                    dim3(1024), 0, stream, n, alpha, shiftA, strideA, beta, shiftB,
-                                    strideB, x, shiftX, incX, strideX, tau, strideP);
+        {
+            const int lds_size_axs = (n - 1 + (1024 / props->warpSize)) * sizeof(T);
+            if(lds_size_axs <= props->sharedMemPerBlock)
+                ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<1024, T>), dim3(1, 1, batch_count),
+                                        dim3(1024), lds_size_axs, stream, n, alpha, shiftA, strideA,
+                                        beta, shiftB, strideB, x, shiftX, incX, strideX, tau,
+                                        strideP);
+            else
+                ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<1024, T>), dim3(1, 1, batch_count),
+                                        dim3(1024), 0, stream, n, alpha, shiftA, strideA, beta,
+                                        shiftB, strideB, x, shiftX, incX, strideX, tau, strideP);
+        }
     }
 
     return rocblas_status_success;
