@@ -41,7 +41,7 @@
 ROCSOLVER_BEGIN_NAMESPACE
 
 // Number of elements to prefetch
-#define NFETCH 4
+#define NFETCH 1
 
 /*
 *   LARF kernels for the left side case. Each work group of NB_X threads
@@ -83,29 +83,20 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_xs(const I m,
     T* xs = reinterpret_cast<T*>(smem);
     T* sdata = xs + m;
 
-    T ar[NFETCH] = {0};
-
-    I ngrp = (m / (NFETCH * NB_X)) * NFETCH;
+    I ngrp = (m / (NB_X));
 
     //
     // GEMV
     //
     for(I i = tx, grp = 0; grp < ngrp; i += NB_X, grp++)
     {
-        I grp_mod = grp % NFETCH;
-        if(grp_mod == 0)
-        {
-            for(I k = 0; k < NFETCH; ++k)
-            {
-                xs[i + k * NB_X] = x[start + (i + k * NB_X) * size_t(incX)];
-                ar[k] = A[i + k * NB_X];
-            }
-        }
+        xs[i] = x[start + (i)*size_t(incX)];
+        // ar = A[i];
 
-        res += conj(ar[grp_mod]) * xs[i];
+        res += conj(A[i]) * xs[i];
     }
 
-    for(I i = tx + (ngrp * NB_X); i < m; i += NB_X)
+    if(I i = tx + (ngrp * NB_X); i < m)
     {
         xs[i] = x[start + i * size_t(incX)];
 
@@ -131,24 +122,27 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_xs(const I m,
     //
     res = -tau[0] * conj(sdata[0]);
 
-    for(I i = tx, grp = 0; grp < ngrp; i += NB_X, grp++)
-    {
-        I grp_mod = grp % NFETCH;
-        if(grp_mod == 0)
-        {
-            for(I k = 0; k < NFETCH; ++k)
-            {
-                ar[k] = A[i + k * NB_X];
-            }
-        }
+    // for(I i = tx, grp = 0; grp < ngrp; i += NB_X, grp++)
+    // {
+    //     I grp_mod = grp % NFETCH;
+    //     if(grp_mod == 0)
+    //     {
+    //         for(I k = 0; k < NFETCH; ++k)
+    //         {
+    //             ar[k] = A[i + k * NB_X];
+    //         }
+    //     }
 
-        A[i] = ar[grp_mod] + res * xs[i];
-    }
+    //     A[i] = ar[grp_mod] + res * xs[i];
+    // }
 
-    for(I i = tx + (ngrp * NB_X); i < m; i += NB_X)
-    {
+    // for(I i = tx + (ngrp * NB_X); i < m; i += NB_X)
+    // {
+    //     A[i] += res * xs[i];
+    // }
+
+    for(I i = tx; i < m; i += NB_X)
         A[i] += res * xs[i];
-    }
 }
 
 // (2 * m + NB_X / warpSize) * sizeof(T) bytes of LDS memory required.
@@ -186,27 +180,20 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_axs(const I m,
     T* as = xs + m;
     T* sdata = as + m;
 
-    I ngrp = (m / (NFETCH * NB_X)) * NFETCH;
+    I ngrp = (m / (NB_X));
 
     //
     // GEMV
     //
     for(I i = tx, grp = 0; grp < ngrp; i += NB_X, grp++)
     {
-        I grp_mod = grp % NFETCH;
-        if(grp_mod == 0)
-        {
-            for(I k = 0; k < NFETCH; ++k)
-            {
-                xs[i + k * NB_X] = x[start + (i + k * NB_X) * size_t(incX)];
-                as[i + k * NB_X] = A[i + k * NB_X];
-            }
-        }
+        xs[i] = x[start + (i)*size_t(incX)];
+        as[i] = A[i];
 
         res += conj(as[i]) * xs[i];
     }
 
-    for(I i = tx + (ngrp * NB_X); i < m; i += NB_X)
+    if(I i = tx + (ngrp * NB_X); i < m)
     {
         xs[i] = x[start + i * size_t(incX)];
         as[i] = A[i];

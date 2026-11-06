@@ -46,9 +46,6 @@ ROCSOLVER_BEGIN_NAMESPACE
     the library size.
 *************************************************************/
 
-// Number of elements to prefetch
-#define NFETCH 4
-
 template <int MAX_THDS, typename T, typename I, typename S, typename U>
 ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS) larfg_kernel_small(const I n,
                                                                      U alpha,
@@ -142,26 +139,19 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS)
     T* xs = reinterpret_cast<T*>(smem);
     T* sval = xs + n - 1;
 
-    I ngrp = ((n - 1) / (NFETCH * MAX_THDS)) * NFETCH;
+    I ngrp = ((n - 1) / (MAX_THDS));
 
     // dot
     T norm2 = 0;
 
     for(I i = tid, grp = 0; grp < ngrp; i += MAX_THDS, grp++)
     {
-        I grp_mod = grp % NFETCH;
-        if(grp_mod == 0)
-        {
-            for(I k = 0; k < NFETCH; ++k)
-            {
-                xs[i + k * MAX_THDS] = x[(i + k * MAX_THDS) * incX];
-            }
-        }
+        xs[i] = x[i * incX];
 
         norm2 += xs[i] * conj(xs[i]);
     }
 
-    for(I i = tid + (ngrp * MAX_THDS); i < n - 1; i += MAX_THDS)
+    if(I i = tid + (ngrp * MAX_THDS); i < n - 1)
     {
         xs[i] = x[i * incX];
 
