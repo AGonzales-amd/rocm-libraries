@@ -83,12 +83,13 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_xs(const I m,
     T* xs = reinterpret_cast<T*>(smem);
     T* sdata = xs + m;
 
-    I ngrp = (m / (NB_X));
+    I ngrp = (m / (NB_X)) * NB_X;
 
     //
     // GEMV
     //
-    for(I i = tx, grp = 0; grp < ngrp; i += NB_X, grp++)
+#pragma unroll
+    for(I i = tx; i < ngrp; i += NB_X)
     {
         xs[i] = x[start + (i)*size_t(incX)];
         // ar = A[i];
@@ -96,7 +97,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_xs(const I m,
         res += conj(A[i]) * xs[i];
     }
 
-    if(I i = tx + (ngrp * NB_X); i < m)
+    if(I i = tx + ngrp; i < m)
     {
         xs[i] = x[start + i * size_t(incX)];
 
@@ -180,12 +181,13 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_axs(const I m,
     T* as = xs + m;
     T* sdata = as + m;
 
-    I ngrp = (m / (NB_X));
+    I ngrp = (m / (NB_X)) * NB_X;
 
     //
     // GEMV
     //
-    for(I i = tx, grp = 0; grp < ngrp; i += NB_X, grp++)
+#pragma unroll
+    for(I i = tx; i < ngrp; i += NB_X)
     {
         xs[i] = x[start + (i)*size_t(incX)];
         as[i] = A[i];
@@ -193,7 +195,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_axs(const I m,
         res += conj(as[i]) * xs[i];
     }
 
-    if(I i = tx + (ngrp * NB_X); i < m)
+    if(I i = tx + ngrp; i < m)
     {
         xs[i] = x[start + i * size_t(incX)];
         as[i] = A[i];
