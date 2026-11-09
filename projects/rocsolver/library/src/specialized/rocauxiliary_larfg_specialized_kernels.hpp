@@ -46,6 +46,7 @@ ROCSOLVER_BEGIN_NAMESPACE
     the library size.
 *************************************************************/
 
+// (MAX_THDS / warpSize) * sizeof(T) bytes of LDS memory required
 template <int MAX_THDS, typename T, typename I, typename S, typename U>
 ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS) larfg_kernel_small(const I n,
                                                                      U alpha,
@@ -72,7 +73,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS) larfg_kernel_small(const I n,
     S* b = beta ? load_ptr_batch<S>(beta, bid, shiftB, strideB) : nullptr;
 
     // shared variables
-    __shared__ T sval[MAX_THDS / WarpSize];
+    extern __shared__ double smem[];
+    T* sval = reinterpret_cast<T*>(smem);
 
     // dot
     T norm2 = 0;
@@ -139,19 +141,20 @@ ROCSOLVER_KERNEL void __launch_bounds__(MAX_THDS)
     T* xs = reinterpret_cast<T*>(smem);
     T* sval = xs + n - 1;
 
-    I ngrp = ((n - 1) / (MAX_THDS));
+    I ngrp = ((n - 1) / (MAX_THDS)) * MAX_THDS;
 
     // dot
     T norm2 = 0;
 
-    for(I i = tid, grp = 0; grp < ngrp; i += MAX_THDS, grp++)
+#pragma unroll
+    for(I i = tid; i < ngrp; i += MAX_THDS)
     {
         xs[i] = x[i * incX];
 
         norm2 += xs[i] * conj(xs[i]);
     }
 
-    if(I i = tid + (ngrp * MAX_THDS); i < n - 1)
+    if(I i = tid + ngrp; i < n - 1)
     {
         xs[i] = x[i * incX];
 
@@ -251,14 +254,19 @@ rocblas_status larfg_run_small(rocblas_handle handle,
         {
             const int lds_size_axs = (n - 1 + (1024 / props->warpSize)) * sizeof(T);
             if(lds_size_axs <= props->sharedMemPerBlock)
+            {
                 ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<1024, T>), dim3(1, 1, batch_count),
                                         dim3(1024), lds_size_axs, stream, n, alpha, shiftA, strideA,
                                         beta, shiftB, strideB, x, shiftX, incX, strideX, tau,
                                         strideP);
+            }
             else
+            {
+                const int lds_size = (1024 / props->warpSize) * sizeof(T);
                 ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<1024, T>), dim3(1, 1, batch_count),
-                                        dim3(1024), 0, stream, n, alpha, shiftA, strideA, beta,
+                                        dim3(1024), lds_size, stream, n, alpha, shiftA, strideA, beta,
                                         shiftB, strideB, x, shiftX, incX, strideX, tau, strideP);
+            }
         }
     }
 

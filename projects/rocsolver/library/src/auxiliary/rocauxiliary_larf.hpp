@@ -40,9 +40,6 @@
 
 ROCSOLVER_BEGIN_NAMESPACE
 
-// Number of elements to prefetch
-#define NFETCH 1
-
 /*
 *   LARF kernels for the left side case. Each work group of NB_X threads
 *   operates on a column of matrix A. Grid dimensions = dim3(1, n, batch count)
@@ -91,8 +88,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_xs(const I m,
 #pragma unroll
     for(I i = tx; i < ngrp; i += NB_X)
     {
-        xs[i] = x[start + (i)*size_t(incX)];
-        // ar = A[i];
+        xs[i] = x[start + i * size_t(incX)];
 
         res += conj(A[i]) * xs[i];
     }
@@ -122,26 +118,6 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_xs(const I m,
     // GER
     //
     res = -tau[0] * conj(sdata[0]);
-
-    // for(I i = tx, grp = 0; grp < ngrp; i += NB_X, grp++)
-    // {
-    //     I grp_mod = grp % NFETCH;
-    //     if(grp_mod == 0)
-    //     {
-    //         for(I k = 0; k < NFETCH; ++k)
-    //         {
-    //             ar[k] = A[i + k * NB_X];
-    //         }
-    //     }
-
-    //     A[i] = ar[grp_mod] + res * xs[i];
-    // }
-
-    // for(I i = tx + (ngrp * NB_X); i < m; i += NB_X)
-    // {
-    //     A[i] += res * xs[i];
-    // }
-
     for(I i = tx; i < m; i += NB_X)
         A[i] += res * xs[i];
 }
@@ -189,7 +165,7 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_left_kernel_axs(const I m,
 #pragma unroll
     for(I i = tx; i < ngrp; i += NB_X)
     {
-        xs[i] = x[start + (i)*size_t(incX)];
+        xs[i] = x[start + i * size_t(incX)];
         as[i] = A[i];
 
         res += conj(as[i]) * xs[i];
@@ -265,29 +241,20 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_right_kernel_xs(const I m,
     T* xs = reinterpret_cast<T*>(smem);
     T* sdata = xs + n;
 
-    T ar[NFETCH] = {0};
-
-    I ngrp = (n / (NFETCH * NB_X)) * NFETCH;
+    I ngrp = (m / (NB_X)) * NB_X;
 
     //
     // GEMV
     //
-    for(I j = tx, grp = 0; grp < ngrp; j += NB_X, grp++)
+#pragma unroll
+    for(I j = tx; j < ngrp; j += NB_X)
     {
-        I grp_mod = grp % NFETCH;
-        if(grp_mod == 0)
-        {
-            for(I k = 0; k < NFETCH; ++k)
-            {
-                xs[j + k * NB_X] = x[start + (j + k * NB_X) * size_t(incX)];
-                ar[k] = A[(j + k * NB_X) * size_t(lda)];
-            }
-        }
+        xs[j] = x[start + j * size_t(incX)];
 
-        res += ar[grp_mod] * xs[j];
+        res += A[j * size_t(lda)] * xs[j];
     }
 
-    for(I j = tx + (ngrp * NB_X); j < n; j += NB_X)
+    if(I j = tx + ngrp; j < n)
     {
         xs[j] = x[start + j * size_t(incX)];
 
@@ -312,25 +279,8 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_right_kernel_xs(const I m,
     // GER
     //
     res = -tau[0] * sdata[0];
-
-    for(I j = tx, grp = 0; grp < ngrp; j += NB_X, grp++)
-    {
-        I grp_mod = grp % NFETCH;
-        if(grp_mod == 0)
-        {
-            for(I k = 0; k < NFETCH; ++k)
-            {
-                ar[k] = A[(j + k * NB_X) * size_t(lda)];
-            }
-        }
-
-        A[j * size_t(lda)] = ar[grp_mod] + res * conj(xs[j]);
-    }
-
-    for(I j = tx + (ngrp * NB_X); j < n; j += NB_X)
-    {
+    for(I j = tx; j < n; j += NB_X)
         A[j * size_t(lda)] += res * conj(xs[j]);
-    }
 }
 
 // (2 * n + NB_X / warpSize) * sizeof(T) bytes of LDS memory required.
@@ -368,27 +318,21 @@ ROCSOLVER_KERNEL void __launch_bounds__(NB_X) larf_right_kernel_axs(const I m,
     T* as = xs + n;
     T* sdata = as + n;
 
-    I ngrp = (n / (NFETCH * NB_X)) * NFETCH;
+    I ngrp = (m / (NB_X)) * NB_X;
 
     //
     // GEMV
     //
-    for(I j = tx, grp = 0; grp < ngrp; j += NB_X, grp++)
+#pragma unroll
+    for(I j = tx; j < ngrp; j += NB_X)
     {
-        I grp_mod = grp % NFETCH;
-        if(grp_mod == 0)
-        {
-            for(I k = 0; k < NFETCH; ++k)
-            {
-                xs[j + k * NB_X] = x[start + (j + k * NB_X) * size_t(incX)];
-                as[j + k * NB_X] = A[(j + k * NB_X) * size_t(lda)];
-            }
-        }
+        xs[j] = x[start + j * size_t(incX)];
+        as[j] = A[j * size_t(lda)];
 
         res += as[j] * xs[j];
     }
 
-    for(I j = tx + (ngrp * NB_X); j < n; j += NB_X)
+    if(I j = tx + ngrp; j < n)
     {
         xs[j] = x[start + j * size_t(incX)];
         as[j] = A[j * size_t(lda)];
