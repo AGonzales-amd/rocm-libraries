@@ -213,59 +213,50 @@ rocblas_status larfg_run_small(rocblas_handle handle,
     // get device prop
     const hipDeviceProp_t* props = rocblas_internal_get_device_prop(handle);
 
+#define LAUNCH_LARFG_XS_KERNEL(MAX_THDS)                                                         \
+    ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<MAX_THDS, T>), dim3(1, 1, batch_count),       \
+                            dim3(MAX_THDS), (n - 1 + (MAX_THDS / props->warpSize)) * sizeof(T),  \
+                            stream, n, alpha, shiftA, strideA, beta, shiftB, strideB, x, shiftX, \
+                            incX, strideX, tau, strideP)
+
+#define LAUNCH_LARFG_KERNEL(MAX_THDS)                                                            \
+    ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<MAX_THDS, T>), dim3(1, 1, batch_count),          \
+                            dim3(MAX_THDS), (MAX_THDS / props->warpSize) * sizeof(T), stream, n, \
+                            alpha, shiftA, strideA, beta, shiftB, strideB, x, shiftX, incX,      \
+                            strideX, tau, strideP)
+
     if(n <= 64)
     {
-        const int lds_size_axs = (n - 1 + (64 / props->warpSize)) * sizeof(T);
-        ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<64, T>), dim3(1, 1, batch_count), dim3(64),
-                                lds_size_axs, stream, n, alpha, shiftA, strideA, beta, shiftB,
-                                strideB, x, shiftX, incX, strideX, tau, strideP);
+        LAUNCH_LARFG_XS_KERNEL(64);
     }
     else if(n <= 128)
     {
-        const int lds_size_axs = (n - 1 + (128 / props->warpSize)) * sizeof(T);
-        ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<128, T>), dim3(1, 1, batch_count), dim3(128),
-                                lds_size_axs, stream, n, alpha, shiftA, strideA, beta, shiftB,
-                                strideB, x, shiftX, incX, strideX, tau, strideP);
+        LAUNCH_LARFG_XS_KERNEL(128);
     }
     else if(n <= 256)
     {
-        const int lds_size_axs = (n - 1 + (256 / props->warpSize)) * sizeof(T);
-        ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<256, T>), dim3(1, 1, batch_count), dim3(256),
-                                lds_size_axs, stream, n, alpha, shiftA, strideA, beta, shiftB,
-                                strideB, x, shiftX, incX, strideX, tau, strideP);
+        LAUNCH_LARFG_XS_KERNEL(256);
     }
     else
     {
         if constexpr(rocsolver_enable_asan)
         {
-            const int lds_size_axs = (n - 1 + (256 / props->warpSize)) * sizeof(T);
-            ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<256, T>), dim3(1, 1, batch_count),
-                                    dim3(256), lds_size_axs, stream, n, alpha, shiftA, strideA,
-                                    beta, shiftB, strideB, x, shiftX, incX, strideX, tau, strideP);
+            LAUNCH_LARFG_KERNEL(256);
         }
         else if(n <= 512)
         {
-            const int lds_size_axs = (n - 1 + (512 / props->warpSize)) * sizeof(T);
-            ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<512, T>), dim3(1, 1, batch_count),
-                                    dim3(512), lds_size_axs, stream, n, alpha, shiftA, strideA,
-                                    beta, shiftB, strideB, x, shiftX, incX, strideX, tau, strideP);
+            LAUNCH_LARFG_XS_KERNEL(512);
         }
         else
         {
             const int lds_size_axs = (n - 1 + (1024 / props->warpSize)) * sizeof(T);
             if(lds_size_axs <= props->sharedMemPerBlock)
             {
-                ROCSOLVER_LAUNCH_KERNEL((larfg_xs_kernel_small<1024, T>), dim3(1, 1, batch_count),
-                                        dim3(1024), lds_size_axs, stream, n, alpha, shiftA, strideA,
-                                        beta, shiftB, strideB, x, shiftX, incX, strideX, tau,
-                                        strideP);
+                LAUNCH_LARFG_XS_KERNEL(1024);
             }
             else
             {
-                const int lds_size = (1024 / props->warpSize) * sizeof(T);
-                ROCSOLVER_LAUNCH_KERNEL((larfg_kernel_small<1024, T>), dim3(1, 1, batch_count),
-                                        dim3(1024), lds_size, stream, n, alpha, shiftA, strideA, beta,
-                                        shiftB, strideB, x, shiftX, incX, strideX, tau, strideP);
+                LAUNCH_LARFG_KERNEL(1024);
             }
         }
     }
